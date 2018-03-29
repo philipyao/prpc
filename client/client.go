@@ -9,7 +9,7 @@ type client struct {
 
     mu sync.Mutex //protect following
 
-    map[string]*RPCClient
+    clientMap map[string]*RPCClient
 
     //todo selector
 
