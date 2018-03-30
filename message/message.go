@@ -3,19 +3,21 @@ package message
 import (
     "fmt"
     "io"
-    //"bufio"
     "errors"
     "encoding/binary"
     "encoding/hex"
+
+    "github.com/philipyao/toolbox/util"
     "github.com/philipyao/prpc/codec"
 )
 
 type MsgKind byte
-type CompressKind byte
 const (
     MsgKindDefault MsgKind   = iota  //默认rpc包
     MsgKindHeartbeat                 //心跳包
-
+)
+type CompressKind byte
+const (
     CompressKindNone CompressKind  = iota
     CompressKindGzip
 )
@@ -23,6 +25,8 @@ const (
 const (
     magicNumber         = 9527
     msgVersion          = 0xA1
+
+    DataCompressLen     = 2048
 )
 
 var (
@@ -32,9 +36,13 @@ var (
     ErrInvLength        = errors.New("invalid total msg length")
 )
 
+var(
+    seqno = 0
+)
+
 //magic(2) + ver(1) + len(2) + (msgkind+compresskind)(1) + seq(2)
 type head [8]byte
-func (h *head) SetMeta(mk MsgKind, seq uint16) {
+func (h *head) initHead(mk MsgKind, seq uint16) {
     binary.BigEndian.PutUint16(h[0:], uint16(magicNumber))
     h[2] = byte(msgVersion)
     h[5] = (byte(mk)<<7)&0x80
@@ -70,10 +78,13 @@ func (h *head) length() int {
     return int(binary.BigEndian.Uint16(h[3:]))
 }
 
+type response struct {
+    r io.Reader
+}
+
 type Message struct {
     head
-    rpc         *msgRPC
-    hbt         *msgHeartbeat
+    *response
 
     data        []byte
 }
@@ -87,40 +98,59 @@ type msgRPC struct {
     V               interface{}     `json:"v"`
 }
 
+
+func NewRequest(msgKind MsgKind) *Message {
+    seqno++
+    msg := new(Message)
+    msg.initHead(msgKind, uint16(seqno))
+    return msg
+}
+
+func NewResponse(r io.Reader) *Message {
+    msg := new(Message)
+    msg.response = &response{r:r}
+    err := msg.unpackHead()
+    if err != nil {
+        fmt.Printf("unpack header error %v\n", err)
+        return nil
+    }
+    return msg
+}
+
 //将v序列化为payload，并添加head后打包成二进制
 func (m *Message) Pack(serviceMethod string, v interface{}, s codec.Serializer) ([]byte, error) {
-    m.rpc = &msgRPC{
+    rpc := &msgRPC{
         ServiceMethod:  serviceMethod,
         V:  v,
     }
-    payload, err := s.Encode(m.rpc)
+    payload, err := s.Encode(rpc)
     if err != nil {
         return nil, err
     }
-    fmt.Printf("payload: %v\n", string(payload))
-    if len(payload) > 2048 {
+    fmt.Printf("payload len: %v\n", len(payload))
+    if len(payload) > DataCompressLen {
         m.setCompressed()
-        //todo compress
+        payload = util.Compress(payload)
+        fmt.Printf("pack after compress: payload len %v\n", len(payload))
     }
     hlen := len(m.head)
     dlen := hlen + len(payload)
     m.data = make([]byte, dlen)
     //pack head len
     m.setLength(dlen)
-    fmt.Printf("hlen %v dlen %v\n", hlen, dlen)
-    fmt.Printf("head %s\n", hex.EncodeToString((m.head[:])))
-    fmt.Printf("payload %s\n", hex.Dump(payload))
+    //fmt.Printf("head %s\n", hex.EncodeToString((m.head[:])))
+    //fmt.Printf("payload %s\n", hex.EncodeToString(payload))
     copy(m.data[0:], m.head[:])
     copy(m.data[hlen:], payload)
     return m.data, nil
 }
 
-func (m *Message) UnpackHead(r io.Reader) error {
-    _, err := io.ReadFull(r, m.head[:])
+func (m *Message) unpackHead() error {
+    _, err := io.ReadFull(m.response.r, m.head[:])
     if err != nil {
         return err
     }
-    fmt.Printf("head %s\n", hex.EncodeToString(m.head[:]))
+    fmt.Printf("unpackHead: %s\n", hex.EncodeToString(m.head[:]))
     if m.magic() != magicNumber {
         return ErrMagic
     }
@@ -131,7 +161,7 @@ func (m *Message) UnpackHead(r io.Reader) error {
 }
 
 //从reader中读取head和payload，并把payload反序列化出来
-func (m *Message) Unpack(r io.Reader, s codec.Serializer, v interface{}) error {
+func (m *Message) Unpack(s codec.Serializer, v interface{}) error {
     if m.IsHeartbeat() {
         return ErrUnpackHeartbeat
     }
@@ -142,10 +172,16 @@ func (m *Message) Unpack(r io.Reader, s codec.Serializer, v interface{}) error {
     }
     lenPayload := length - len(m.head)
     m.data = make([]byte, lenPayload)
-    _, err := io.ReadFull(r, m.data)
+    _, err := io.ReadFull(m.response.r, m.data)
     if err != nil {
         return err
     }
+    fmt.Printf("unpack: payload len %v\n", lenPayload)
+    if m.isCompressed() {
+        m.data = util.Decompress(m.data)
+        fmt.Printf("unpack after decompress: payload len %v\n", len(m.data))
+    }
+
     rpc := &msgRPC{
         V: v,
     }
