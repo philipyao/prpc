@@ -38,6 +38,7 @@ var (
 
 var(
     seqno = 0
+    defaultCodec = codec.GetSerializer(codec.SerializeTypeMsgpack)
 )
 
 //magic(2) + ver(1) + len(2) + (msgkind+compresskind)(1) + seq(2)
@@ -61,6 +62,12 @@ func (h *head) IsHeartbeat() bool {
     mk := MsgKind((h[5]&0x80)>>7)
     return mk == MsgKindHeartbeat
 }
+
+func (h *head) IsDefault() bool {
+    mk := MsgKind((h[5]&0x80)>>7)
+    return mk == MsgKindDefault
+}
+
 func (h *head) isCompressed() bool {
     ck := CompressKind((h[5]&0x08)>>3)
     return ck == CompressKindGzip
@@ -80,6 +87,7 @@ func (h *head) length() int {
 
 type response struct {
     r io.Reader
+    rpc *msgRPC
 }
 
 type Message struct {
@@ -95,7 +103,7 @@ type msgHeartbeat struct {
 
 type msgRPC struct {
     ServiceMethod   string          `json:"service_method"`
-    V               interface{}     `json:"v"`
+    Payload         []byte          `json:"payload"`   //rpc实际数据
 }
 
 
@@ -106,42 +114,55 @@ func NewRequest(msgKind MsgKind) *Message {
     return msg
 }
 
-func NewResponse(r io.Reader) *Message {
+func NewResponse(r io.Reader) (*Message, error) {
     msg := new(Message)
     msg.response = &response{r:r}
-    err := msg.unpackHead()
+    err := msg.read()
     if err != nil {
-        fmt.Printf("unpack header error %v\n", err)
-        return nil
+        return nil, err
     }
-    return msg
+    if msg.IsDefault() {
+        //如果是默认（rpc）包，解析出method
+        msg.response.rpc = new(msgRPC)
+        err = defaultCodec.Decode(msg.data, msg.response.rpc)
+        if err != nil {
+            return nil, fmt.Errorf("decode body error %v", err)
+        }
+
+    }
+    return msg, nil
 }
 
 //将v序列化为payload，并添加head后打包成二进制
 func (m *Message) Pack(serviceMethod string, v interface{}, s codec.Serializer) ([]byte, error) {
-    rpc := &msgRPC{
-        ServiceMethod:  serviceMethod,
-        V:  v,
-    }
-    payload, err := s.Encode(rpc)
+    payload, err := s.Encode(v)
     if err != nil {
         return nil, err
     }
-    fmt.Printf("payload len: %v\n", len(payload))
-    if len(payload) > DataCompressLen {
+
+    rpc := &msgRPC{
+        ServiceMethod:  serviceMethod,
+        Payload:  payload,
+    }
+    body, err := defaultCodec.Encode(rpc)
+    if err != nil {
+        return nil, err
+    }
+    fmt.Printf("body len: %v\n", len(body))
+    if len(body) > DataCompressLen {
         m.setCompressed()
-        payload = util.Compress(payload)
-        fmt.Printf("pack after compress: payload len %v\n", len(payload))
+        body = util.Compress(body)
+        fmt.Printf("pack after compress: body len %v\n", len(body))
     }
     hlen := len(m.head)
-    dlen := hlen + len(payload)
+    dlen := hlen + len(body)
     m.data = make([]byte, dlen)
     //pack head len
     m.setLength(dlen)
     //fmt.Printf("head %s\n", hex.EncodeToString((m.head[:])))
-    //fmt.Printf("payload %s\n", hex.EncodeToString(payload))
+    //fmt.Printf("body %s\n", hex.EncodeToString(body))
     copy(m.data[0:], m.head[:])
-    copy(m.data[hlen:], payload)
+    copy(m.data[hlen:], body)
     return m.data, nil
 }
 
@@ -157,38 +178,59 @@ func (m *Message) unpackHead() error {
     if m.version() != msgVersion {
         return ErrVersion
     }
-    return nil
-}
-
-//从reader中读取head和payload，并把payload反序列化出来
-func (m *Message) Unpack(s codec.Serializer, v interface{}) error {
-    if m.IsHeartbeat() {
-        return ErrUnpackHeartbeat
-    }
     length := m.length()
     fmt.Printf("length: %d, hlen %v\n", length, len(m.head))
     if length <= len(m.head) {
         return ErrInvLength
     }
-    lenPayload := length - len(m.head)
-    m.data = make([]byte, lenPayload)
-    _, err := io.ReadFull(m.response.r, m.data)
+    return nil
+}
+
+func (m *Message) read() error {
+    var err error
+    //read head
+    err = m.unpackHead()
     if err != nil {
         return err
     }
-    fmt.Printf("unpack: payload len %v\n", lenPayload)
+    //read body
+    lenBody := m.length() - len(m.head)
+    m.data = make([]byte, lenBody)
+    _, err = io.ReadFull(m.response.r, m.data)
+    if err != nil {
+        return err
+    }
+    fmt.Printf("unpack: body len %v\n", lenBody)
     if m.isCompressed() {
         m.data = util.Decompress(m.data)
-        fmt.Printf("unpack after decompress: payload len %v\n", len(m.data))
-    }
-
-    rpc := &msgRPC{
-        V: v,
-    }
-    err = s.Decode(m.data, rpc)
-    if err != nil {
-        return err
+        fmt.Printf("unpack after decompress: body len %v\n", len(m.data))
     }
     return nil
+}
+
+//获取rpc的ServiceMethod
+func (m *Message) ServiceMethod() string {
+    if m.IsHeartbeat() {
+        return ""
+    }
+
+    if m.response != nil && m.response.rpc != nil {
+        return m.response.rpc.ServiceMethod
+    }
+    return ""
+}
+
+//把payload反序列化出来
+func (m *Message) Unpack(s codec.Serializer, v interface{}) error {
+    if m.IsHeartbeat() {
+        return ErrUnpackHeartbeat
+    }
+    if m.response == nil || m.response.rpc == nil {
+        return errors.New("no rpc found")
+    }
+    if len(m.response.rpc.Payload) == 0 {
+        return errors.New("empty rpc payload")
+    }
+    return s.Decode(m.response.rpc.Payload, v)
 }
 

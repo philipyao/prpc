@@ -3,8 +3,11 @@ package message
 import (
     "testing"
     "bytes"
-    //"bufio"
     "github.com/philipyao/prpc/codec"
+)
+
+var (
+    serviceMethod string = "Demo.func"
 )
 
 func TestRpcJson(t *testing.T) {
@@ -19,17 +22,23 @@ func TestRpcJson(t *testing.T) {
 
     msg := NewRequest(MsgKindDefault)
     s := codec.GetSerializer(codec.SerializeTypeJson)
-    data, err := msg.Pack("Demo.func", rpc, s)
+    data, err := msg.Pack(serviceMethod, rpc, s)
     if err != nil {
         t.Errorf("pack error: %v", err)
     }
     t.Logf("pack ok, data len %v", len(data))
 
     r := bytes.NewReader(data)
-    rmsg := NewResponse(r)
+    rmsg, err := NewResponse(r)
+    if err != nil {
+        t.Errorf("NewResponse error: %v", err)
+    }
     if rmsg.IsHeartbeat() {
         t.Logf("heartbeart received!")
     } else {
+        if rmsg.ServiceMethod() != serviceMethod {
+            t.Errorf("ServiceMethod mismatch: %v %v", rmsg.ServiceMethod(), serviceMethod)
+        }
         var rrpc MyRPC
         err = rmsg.Unpack(s, &rrpc)
         if err != nil {
@@ -52,17 +61,25 @@ func TestRpcMsgpack(t *testing.T) {
 
     msg := NewRequest(MsgKindDefault)
     s := codec.GetSerializer(codec.SerializeTypeMsgpack)
-    data, err := msg.Pack("Demo.func", rpc, s)
+
+    data, err := msg.Pack(serviceMethod, rpc, s)
     if err != nil {
         t.Errorf("pack error: %v", err)
     }
     t.Logf("pack ok, data len %v", len(data))
 
     r := bytes.NewReader(data)
-    rmsg := NewResponse(r)
+    rmsg, err := NewResponse(r)
+    if err != nil {
+        t.Errorf("NewResponse error: %v", err)
+    }
     if rmsg.IsHeartbeat() {
         t.Logf("heartbeart received!")
     } else {
+        if rmsg.ServiceMethod() != serviceMethod {
+            t.Errorf("ServiceMethod mismatch: %v %v", rmsg.ServiceMethod(), serviceMethod)
+        }
+
         var rrpc MyRPC
         err = rmsg.Unpack(s, &rrpc)
         if err != nil {
@@ -85,17 +102,21 @@ func TestRpcCompress(t *testing.T) {
 
     msg := NewRequest(MsgKindDefault)
     s := codec.GetSerializer(codec.SerializeTypeJson)
-    data, err := msg.Pack("Demo.func", rpc, s)
+    data, err := msg.Pack(serviceMethod, rpc, s)
     if err != nil {
         t.Errorf("pack error: %v", err)
     }
     t.Logf("pack ok, data len %v", len(data))
 
     r := bytes.NewReader(data)
-    rmsg := NewResponse(r)
+    rmsg, err := NewResponse(r)
     if rmsg.IsHeartbeat() {
         t.Logf("heartbeart received!")
     } else {
+        if rmsg.ServiceMethod() != serviceMethod {
+            t.Errorf("ServiceMethod mismatch: %v %v", rmsg.ServiceMethod(), serviceMethod)
+        }
+
         var rrpc MyRPC
         err = rmsg.Unpack(s, &rrpc)
         if err != nil {
