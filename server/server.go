@@ -263,6 +263,23 @@ func (s *Server) unpackRequest(msg *message.Message) (service *service, mtype *m
     return
 }
 
+func (s *Server) sendResponse(sending *sync.Mutex, req *Request, reply interface{}, errmsg string) {
+    resp := s.getResponse()
+    // Encode the response header
+    resp.ServiceMethod = req.ServiceMethod
+    if errmsg != "" {
+        resp.Error = errmsg
+        reply = invalidRequest
+    }
+    resp.Seq = req.Seq
+    sending.Lock()
+    err := codec.WriteResponse(resp, reply)
+    if debugLog && err != nil {
+        log.Println("rpc: writing response:", err)
+    }
+    sending.Unlock()
+}
+
 // suitableMethods returns suitable Rpc methods of typ
 func suitableMethods(typ reflect.Type) map[string]*methodType {
     methods := make(map[string]*methodType)
