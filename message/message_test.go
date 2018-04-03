@@ -125,3 +125,7 @@ func TestRpcCompress(t *testing.T) {
         t.Logf("rrpc received: %+v!", rrpc)
     }
 }
+
+func TestHeartbeat(t *testing.T) {
+
+}
