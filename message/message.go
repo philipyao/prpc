@@ -78,7 +78,7 @@ func (h *head) magic() int {
 func (h *head) version() int {
     return int(h[2])
 }
-func (h *head) Seq() uint16 {
+func (h *head) Seqno() uint16 {
     return binary.BigEndian.Uint16(h[6:])
 }
 func (h *head) length() int {
@@ -107,10 +107,9 @@ type msgRPC struct {
 }
 
 
-func NewRequest(msgKind MsgKind) *Message {
-    seqno++
+func NewRequest(msgKind MsgKind, seqno uint16) *Message {
     msg := new(Message)
-    msg.initHead(msgKind, uint16(seqno))
+    msg.initHead(msgKind, seqno)
     return msg
 }
 

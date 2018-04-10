@@ -20,7 +20,7 @@ func TestRpcJson(t *testing.T) {
         Integer: 666,
     }
 
-    msg := NewRequest(MsgKindDefault)
+    msg := NewRequest(MsgKindDefault, 1)
     s := codec.GetSerializer(codec.SerializeTypeJson)
     data, err := msg.Pack(serviceMethod, rpc, s)
     if err != nil {
@@ -59,7 +59,7 @@ func TestRpcMsgpack(t *testing.T) {
         Integer: 888,
     }
 
-    msg := NewRequest(MsgKindDefault)
+    msg := NewRequest(MsgKindDefault, 1)
     s := codec.GetSerializer(codec.SerializeTypeMsgpack)
 
     data, err := msg.Pack(serviceMethod, rpc, s)
@@ -100,7 +100,7 @@ func TestRpcCompress(t *testing.T) {
         rpc.Integer = append(rpc.Integer, i)
     }
 
-    msg := NewRequest(MsgKindDefault)
+    msg := NewRequest(MsgKindDefault, 1)
     s := codec.GetSerializer(codec.SerializeTypeJson)
     data, err := msg.Pack(serviceMethod, rpc, s)
     if err != nil {

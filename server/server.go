@@ -1,6 +1,7 @@
 package server
 
 import (
+    "fmt"
     "errors"
     "sync"
     "net"
@@ -34,7 +35,7 @@ type service struct {
     method map[string]*methodType // registered methods
 }
 
-func (s *service) call(server *Server, sending *sync.Mutex, wg *sync.WaitGroup, mtype *methodType, argv, replyv reflect.Value) {
+func (s *service) call(server *Server, conn io.ReadWriteCloser, wg *sync.WaitGroup, mtype *methodType, reqmsg *message.Message, argv, replyv reflect.Value) {
     if wg != nil {
         defer wg.Done()
     }
@@ -52,7 +53,7 @@ func (s *service) call(server *Server, sending *sync.Mutex, wg *sync.WaitGroup, 
     }
     _ = errmsg
     //
-    //server.sendResponse(sending, req, replyv.Interface(), codec, errmsg)
+    server.sendResponse(conn, reqmsg, replyv.Interface(),errmsg)
 }
 
 // Is this an exported - upper case - name?
@@ -85,25 +86,31 @@ type Server struct {
     listener    *net.TCPListener
 }
 
-func New(group, index, addr string) *Server {
-    //laddr, err := net.ResolveTCPAddr("tcp", addr)
-    //if err != nil {
-    //    errMsg = fmt.Sprintf("[rpc] ResolveTCPAddr() error: addr %v, err %v", addr, err)
-    //    return nil
-    //}
-    //
-    //l, err := net.ListenTCP("tcp", laddr)
-    //if err != nil {
-    //    errMsg = fmt.Sprintf("[rpc ] rpc listen on %v, %v", laddr, err)
-    //    return nil
-    //}
+func New(group string, index int, addr string) *Server {
+    laddr, err := net.ResolveTCPAddr("tcp", addr)
+    if err != nil {
+        fmt.Printf("[rpc] ResolveTCPAddr() error: addr %v, err %v\n", addr, err)
+        return nil
+    }
 
-    return nil
+    l, err := net.ListenTCP("tcp", laddr)
+    if err != nil {
+        fmt.Printf("[rpc ] rpc listen on %v, %v\n", laddr, err)
+        return nil
+    }
+
+    return &Server{
+        group: group,
+        index: index,
+        serializer: codec.GetSerializer(codec.SerializeTypeMsgpack),
+        serviceMap: make(map[string]*service),
+        listener: l,
+    }
 }
 
 //设置打解包方法，默认msgpack
 func (s *Server) SetCodec(styp codec.SerializeType) {
-
+    //todo
 }
 
 //注册rpc处理
@@ -166,9 +173,7 @@ func (s *Server) doServe(done chan struct{}, wg *sync.WaitGroup) {
     for {
         select {
         case <-done:
-            //if s.logFunc != nil {
-            //    s.logFunc("[rpc] stop listening on %v...", s.listener.Addr())
-            //}
+            log.Printf("[rpc] stop listening on %v...", s.listener.Addr())
             return
         default:
         }
@@ -178,23 +183,22 @@ func (s *Server) doServe(done chan struct{}, wg *sync.WaitGroup) {
             if opErr, ok := err.(*net.OpError); ok && opErr.Timeout() {
                 continue
             }
-            //if s.logFunc != nil {
-            //    s.logFunc("[rpc] Error: accept connection, %v", err.Error())
-            //}
+            log.Printf("[rpc] Error: accept connection, %v", err.Error())
         }
+        log.Printf("[rpc] accept connection: %v", conn)
         go s.serveConn(conn)
     }
 }
 
 func (s *Server) serveConn(conn io.ReadWriteCloser) {
-    sending := new(sync.Mutex)
     wg := new(sync.WaitGroup)
     for {
-        rmsg, err := message.NewResponse(conn)
+        reqmsg, err := message.NewResponse(conn)
         if err != nil {
-            //todo
+            log.Printf("[rpc] Error: NewResponse %v", err)
+            break
         }
-        service, mtype, argv, replyv, err := s.unpackRequest(rmsg)
+        service, mtype, argv, replyv, err := s.unpackRequest(reqmsg)
         if err != nil {
             if err != io.EOF {
                 log.Println("rpc:", err)
@@ -202,17 +206,19 @@ func (s *Server) serveConn(conn io.ReadWriteCloser) {
             continue
         }
         wg.Add(1)
-        go service.call(s, sending, wg, mtype, argv, replyv)
+        go service.call(s, conn, wg, mtype, reqmsg, argv, replyv)
     }
     // We've seen that there are no more requests.
     // Wait for responses to be sent before closing codec.
     wg.Wait()
+    log.Printf("[rpc] conn %v end", conn)
     conn.Close()
 }
 
 func (s *Server) unpackRequest(msg *message.Message) (service *service, mtype *methodType, argv, replyv reflect.Value, err error) {
     if msg.IsHeartbeat() {
         //todo
+        panic("heartbeat")
     }
     serviceMethod := msg.ServiceMethod()
     dot := strings.LastIndex(serviceMethod, ".")
@@ -224,15 +230,15 @@ func (s *Server) unpackRequest(msg *message.Message) (service *service, mtype *m
     methodName := serviceMethod[dot+1:]
 
     // Look up the request.
-    svci, ok := s.serviceMap[serviceName]
+    service, ok := s.serviceMap[serviceName]
     if !ok {
         err = errors.New("rpc: can't find service " + serviceName)
         return
     }
-    svc = svci.(*service)
-    mtype = svc.method[methodName]
+    mtype = service.method[methodName]
     if mtype == nil {
         err = errors.New("rpc: can't find method " + methodName)
+        return
     }
 
     // Decode the argument value.
@@ -263,21 +269,23 @@ func (s *Server) unpackRequest(msg *message.Message) (service *service, mtype *m
     return
 }
 
-func (s *Server) sendResponse(sending *sync.Mutex, req *Request, reply interface{}, errmsg string) {
-    resp := s.getResponse()
+func (s *Server) sendResponse(conn io.ReadWriteCloser, reqmsg *message.Message, reply interface{}, errmsg string) {
+    log.Printf("sendResponse: conn %v, reply %+v, seqno %v, method %v", conn, reply, reqmsg.Seqno(), reqmsg.ServiceMethod())
+    pkg := message.NewRequest(message.MsgKindDefault, reqmsg.Seqno())
     // Encode the response header
-    resp.ServiceMethod = req.ServiceMethod
     if errmsg != "" {
-        resp.Error = errmsg
-        reply = invalidRequest
+        //todo
+        panic("errmsg")
+        reply = struct{}{}
     }
-    resp.Seq = req.Seq
-    sending.Lock()
-    err := codec.WriteResponse(resp, reply)
-    if debugLog && err != nil {
-        log.Println("rpc: writing response:", err)
+    data, err := pkg.Pack(reqmsg.ServiceMethod(), reply, s.serializer)
+    if err != nil {
+        //todo
+        log.Printf("pack error %v", err)
+        return
     }
-    sending.Unlock()
+    log.Printf("pack ok, data len %v", len(data))
+    conn.Write(data)
 }
 
 // suitableMethods returns suitable Rpc methods of typ
