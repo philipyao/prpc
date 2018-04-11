@@ -41,6 +41,7 @@ func New(zkAddr string) *Client {
         rpc := newRPC(zkConn, DefaultZKPath + "/" + k, string(v))
         if rpc != nil {
             c.clientMap[k] = rpc
+            log.Printf("find new client: k %v, rpc %+v", k, rpc)
         }
     }
 

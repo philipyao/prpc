@@ -11,6 +11,7 @@ func TestCreateRPCClient(t *testing.T) {
     if err != nil {
         t.Fatalf("zk connect returned error: %v", err)
     }
+    defer zkConn.Close()
 
     path := DefaultZKPath + "/" + "testnode1"
     //addr + styp + weight
@@ -18,11 +19,10 @@ func TestCreateRPCClient(t *testing.T) {
     cli := newRPC(zkConn, path, nodeVal)
     if cli != nil {
         t.Logf("cli: %+v", cli)
+        cli.Close()
     } else {
         t.Error("create rpc client error")
     }
-
-    nodeVal = "10.1.164.45:8607" + "|" + "2" + "|" + "1"
 }
 
 func TestCreateRPCClient2(t *testing.T) {
@@ -31,6 +31,7 @@ func TestCreateRPCClient2(t *testing.T) {
     if err != nil {
         t.Fatalf("zk connect returned error: %v", err)
     }
+    defer zkConn.Close()
 
     path := DefaultZKPath + "/" + "testnode2"
     //addr + styp + weight
@@ -38,6 +39,7 @@ func TestCreateRPCClient2(t *testing.T) {
     cli := newRPC(zkConn, path, nodeVal)
     if cli != nil {
         t.Logf("cli: %+v", cli)
+        cli.Close()
     } else {
         t.Error("create rpc client error")
     }
@@ -49,6 +51,7 @@ func TestCreateRPCClient3(t *testing.T) {
     if err != nil {
         t.Fatalf("zk connect returned error: %v", err)
     }
+    defer zkConn.Close()
 
     path := DefaultZKPath + "/" + "testnode3"
     //addr + styp + weight
@@ -56,6 +59,7 @@ func TestCreateRPCClient3(t *testing.T) {
     cli := newRPC(zkConn, path, nodeVal)
     if cli != nil {
         t.Logf("cli: %+v", cli)
+        cli.Close()
     } else {
         t.Error("create rpc client error")
     }
@@ -67,6 +71,7 @@ func TestCreateRPCClient4(t *testing.T) {
     if err != nil {
         t.Fatalf("zk connect returned error: %v", err)
     }
+    defer zkConn.Close()
 
     path := DefaultZKPath + "/" + "testnode3"
     //addr + styp + weight
@@ -74,6 +79,7 @@ func TestCreateRPCClient4(t *testing.T) {
     cli := newRPC(zkConn, path, nodeVal)
     if cli != nil {
         t.Logf("cli: %+v", cli)
+        cli.Close()
     } else {
         t.Error("create rpc client error")
     }
@@ -85,6 +91,7 @@ func TestCreateRPCClient5(t *testing.T) {
     if err != nil {
         t.Fatalf("zk connect returned error: %v", err)
     }
+    defer zkConn.Close()
 
     path := DefaultZKPath + "/" + "testnode3"
     //addr + styp + weight
@@ -92,6 +99,7 @@ func TestCreateRPCClient5(t *testing.T) {
     cli := newRPC(zkConn, path, nodeVal)
     if cli != nil {
         t.Logf("cli: %+v", cli)
+        cli.Close()
     } else {
         t.Error("create rpc client error")
     }

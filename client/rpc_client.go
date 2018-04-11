@@ -4,11 +4,14 @@ import (
     "errors"
     "net"
     "log"
+    "io"
+    "fmt"
     "sync"
     "strings"
     "strconv"
 
     "github.com/philipyao/prpc/codec"
+    "github.com/philipyao/prpc/message"
     "github.com/philipyao/toolbox/zkcli"
 )
 
@@ -27,6 +30,7 @@ type Call struct {
     Reply         interface{} // The reply from the function (*struct).
     Error         error       // After completion, the error status.
     Done          chan *Call  // Strobes when call is complete.
+    fn            CBFn
 }
 func (call *Call) done() {
     select {
@@ -54,8 +58,8 @@ type RPCClient struct {
     serializer codec.Serializer
 
     mutex    sync.Mutex // protects following
-    seq      uint64
-    pending  map[uint64]*Call
+    seq      uint16
+    pending  map[uint16]*Call
     closing  bool // user has called Close
     shutdown bool // server has told us to stop
 
@@ -115,7 +119,7 @@ func newRPC(zk *zkcli.Conn, path, nodeVal string) *RPCClient {
         styp: styp,
         weight: weight,
         serializer: serializer,
-        pending: make(map[uint64]*Call),
+        pending: make(map[uint16]*Call),
     }
 
     go client.input()
@@ -128,31 +132,25 @@ func (rc *RPCClient) NodeVal() string {
     return rc.nodeVal
 }
 
-func (rc *RPCClient) Call(serviceMethod string, args interface{}, reply interface{}) {
-
+func (rc *RPCClient) Call(serviceMethod string, args interface{}, reply interface{}) error {
+    call := <- rc.doCall(serviceMethod, args, reply)
+    return call.Error
 }
 
-func (rc *RPCClient) Go(serviceMethod string, args interface{}, reply interface{}, fn CBFn) error {
-    //call := new(Call)
-    //call.ServiceMethod = serviceMethod
-    //call.Args = args
-    //call.Reply = reply
-    //if done == nil {
-    //    done = make(chan *Call, 10) // buffered.
-    //} else {
-    //    // If caller passes done != nil, it must arrange that
-    //    // done has enough buffer for the number of simultaneous
-    //    // RPCs that will be using that channel. If the channel
-    //    // is totally unbuffered, it's best not to run at all.
-    //    if cap(done) == 0 {
-    //        log.Panic("rpc: done channel is unbuffered")
-    //    }
-    //}
-    //call.Done = done
-    //client.send(call)
-    //return call
+func (rc *RPCClient) doCall(serviceMethod string, args interface{}, reply interface{}) chan *Call {
+    call := new(Call)
+    call.ServiceMethod = serviceMethod
+    call.Args = args
+    call.Reply = reply
+    call.Done = make(chan *Call, 10)
+    rc.send(call)
 
-    return nil
+    return call.Done
+}
+
+func (rc *RPCClient) Go(serviceMethod string, args interface{}, reply interface{}, fn CBFn) {
+    call := <- rc.doCall(serviceMethod, args, reply)
+    fn(call.Args, call.Reply, call.Error)
 }
 
 func (rc *RPCClient) Close() error {
@@ -166,6 +164,7 @@ func (rc *RPCClient) Close() error {
     //return rc.codec.Close()
 
     //关闭tcpconn
+    rc.conn.Close()
     //stop监听
 
     return nil
@@ -184,23 +183,30 @@ func (rc *RPCClient) send(call *Call) {
     }
     seq := rc.seq
     rc.seq++
+    if rc.seq == 0 {
+        rc.seq = 1
+    }
     rc.pending[seq] = call
     rc.mutex.Unlock()
 
     // Encode and send the request.
-    //rc.request.Seq = seq
-    //rc.request.ServiceMethod = call.ServiceMethod
-    //err := rc.codec.WriteRequest(&rc.request, call.Args)
-    //if err != nil {
-    //    rc.mutex.Lock()
-    //    call = rc.pending[seq]
-    //    delete(rc.pending, seq)
-    //    rc.mutex.Unlock()
-    //    if call != nil {
-    //        call.Error = err
-    //        call.done()
-    //    }
-    //}
+    pkg := message.NewRequest(message.MsgKindDefault, seq)
+    data, err := pkg.Pack(call.ServiceMethod, call.Args, rc.serializer)
+    if err != nil {
+        //todo
+        log.Printf("pack error %v", err)
+        rc.mutex.Lock()
+        call = rc.pending[seq]
+        delete(rc.pending, seq)
+        rc.mutex.Unlock()
+        if call != nil {
+            call.Error = err
+            call.done()
+        }
+        return
+    }
+    log.Printf("pack ok, data len %v", len(data))
+    rc.conn.Write(data)
 }
 
 func (rc *RPCClient) watch() {
@@ -208,70 +214,79 @@ func (rc *RPCClient) watch() {
 }
 
 func (rc *RPCClient) input() {
-    //var err error
+    var err error
     //var response Response
-    //for err == nil {
-    //    response = Response{}
-    //    err = rc.codec.ReadResponseHeader(&response)
-    //    if err != nil {
-    //        break
-    //    }
-    //    seq := response.Seq
-    //    rc.mutextex.Lock()
-    //    call := rc.pending[seq]
-    //    delete(rc.pending, seq)
-    //    rc.mutextex.Unlock()
-    //
-    //    switch {
-    //    case call == nil:
-    //        // We've got no pending call. That usually means that
-    //        // WriteRequest partially failed, and call was already
-    //        // removed; response is a server telling us about an
-    //        // error reading request body. We should still attempt
-    //        // to read error body, but there's no one to give it to.
-    //        err = rc.codec.ReadResponseBody(nil)
-    //        if err != nil {
-    //            err = errors.New("reading error body: " + err.Error())
-    //        }
-    //    case response.Error != "":
-    //        // We've got an error response. Give this to the request;
-    //        // any subsequent requests will get the ReadResponseBody
-    //        // error if there is one.
-    //        call.Error = ServerError(response.Error)
-    //        err = rc.codec.ReadResponseBody(nil)
-    //        if err != nil {
-    //            err = errors.New("reading error body: " + err.Error())
-    //        }
-    //        call.done()
-    //    default:
-    //        err = rc.codec.ReadResponseBody(call.Reply)
-    //        if err != nil {
-    //            call.Error = errors.New("reading body " + err.Error())
-    //        }
-    //        call.done()
-    //    }
-    //}
+    for err == nil {
+        rmsg, err := message.NewResponse(rc.conn)
+        if err != nil {
+            log.Printf("NewResponse error: %v", err)
+            break
+        }
+        if rmsg.IsHeartbeat() {
+            //todo 处理rpc心跳
+            log.Println("heartbeat received")
+            continue
+        }
+
+        //开始处理rpc返回
+        seq := rmsg.Seqno()
+        //rc.mutextex.Lock()
+        call := rc.pending[seq]
+        delete(rc.pending, seq)
+        //rc.mutextex.Unlock()
+
+        switch {
+        case call == nil:
+            // We've got no pending call.
+            log.Printf("rpc request seqno<%v> not found", seq)
+            continue
+
+        //case response.Error != "":
+        //    // We've got an error response. Give this to the request;
+        //    // any subsequent requests will get the ReadResponseBody
+        //    // error if there is one.
+        //    call.Error = ServerError(response.Error)
+        //    err = rc.codec.ReadResponseBody(nil)
+        //    if err != nil {
+        //        err = errors.New("reading error body: " + err.Error())
+        //    }
+        //    call.done()
+
+        default:
+            if rmsg.ServiceMethod() != call.ServiceMethod {
+                call.Error = fmt.Errorf("response method mismatch: %v %v" + rmsg.ServiceMethod(), call.ServiceMethod)
+                call.done()
+                continue
+            }
+            err = rmsg.Unpack(rc.serializer, call.Reply)
+            if err != nil {
+                call.Error = errors.New("unpacking body " + err.Error())
+            }
+            call.done()
+        }
+    }
+
     // Terminate pending calls.
     //rc.reqMutex.Lock()
     //rc.mutextex.Lock()
-    //rc.shutdown = true
-    //closing := rc.closing
-    //if err == io.EOF {
-    //    if closing {
-    //        err = ErrShutdown
-    //    } else {
-    //        err = io.ErrUnexpectedEOF
-    //    }
-    //}
-    //for _, call := range rc.pending {
-    //    call.Error = err
-    //    call.done()
-    //}
+    rc.shutdown = true
+    closing := rc.closing
+    if err == io.EOF {
+        if closing {
+            err = ErrShutdown
+        } else {
+            err = io.ErrUnexpectedEOF
+        }
+    }
+    for _, call := range rc.pending {
+        call.Error = err
+        call.done()
+    }
     //rc.mutextex.Unlock()
     //rc.reqMutex.Unlock()
-    //if debugLog && err != io.EOF && !closing {
-    //    log.Println("rpc: client protocol error:", err)
-    //}
+    if err != io.EOF && !closing {
+        log.Println("rpc: client protocol error:", err)
+    }
 }
 
 func (rc *RPCClient) heartbeat() {

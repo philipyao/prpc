@@ -12,8 +12,15 @@ import (
     "unicode"
     "strings"
     "unicode/utf8"
+
+    "github.com/philipyao/toolbox/zkcli"
     "github.com/philipyao/prpc/codec"
     "github.com/philipyao/prpc/message"
+)
+
+const (
+    DefaultSrvIndexWeight         = 1
+    DefaultMsgPack                = codec.SerializeTypeMsgpack
 )
 
 // Precompute the reflect type for error. Can't use error directly
@@ -74,9 +81,13 @@ func isExportedOrBuiltinType(t reflect.Type) bool {
 
 
 type Server struct {
+    zk      *zkcli.Conn
     group   string
     index   int
+    addr    string
 
+    weight  int
+    styp int
     serializer codec.Serializer
 
     serviceMap map[string]*service
@@ -86,7 +97,13 @@ type Server struct {
     listener    *net.TCPListener
 }
 
-func New(group string, index int, addr string) *Server {
+func New(zkAddr, group string, index int, addr string) *Server {
+    zkConn, err := zkcli.Connect(zkAddr)
+    if err != nil {
+        log.Printf("zk connect returned error: %+v", err)
+        return nil
+    }
+
     laddr, err := net.ResolveTCPAddr("tcp", addr)
     if err != nil {
         fmt.Printf("[rpc] ResolveTCPAddr() error: addr %v, err %v\n", addr, err)
@@ -100,16 +117,24 @@ func New(group string, index int, addr string) *Server {
     }
 
     return &Server{
+        zk: zkConn,
         group: group,
         index: index,
-        serializer: codec.GetSerializer(codec.SerializeTypeMsgpack),
+        addr: addr,
+        weight: DefaultSrvIndexWeight,
+        styp: DefaultMsgPack,
+        serializer: codec.GetSerializer(DefaultMsgPack),
         serviceMap: make(map[string]*service),
         listener: l,
     }
 }
 
+func (s *Server) SetWeight(weight int) error {
+    //todo
+}
+
 //设置打解包方法，默认msgpack
-func (s *Server) SetCodec(styp codec.SerializeType) {
+func (s *Server) SetCodec(tp int) error {
     //todo
 }
 
@@ -169,6 +194,9 @@ func (s *Server) doServe(done chan struct{}, wg *sync.WaitGroup) {
         defer wg.Done()
     }
     defer s.listener.Close()
+
+    //register to zk
+
 
     for {
         select {
