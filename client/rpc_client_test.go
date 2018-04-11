@@ -104,3 +104,34 @@ func TestCreateRPCClient5(t *testing.T) {
         t.Error("create rpc client error")
     }
 }
+
+type Args struct {
+    A, B int
+}
+
+func TestCallRPC(t *testing.T) {
+    zkAddr := "10.1.164.20:2181,10.1.164.20:2182"
+    zkConn, err := zkcli.Connect(zkAddr)
+    if err != nil {
+        t.Fatalf("zk connect returned error: %v", err)
+    }
+    defer zkConn.Close()
+
+    path := DefaultZKPath + "/" + "global.platsvr.1"
+    //addr + styp + weight
+    nodeVal := "10.1.164.99:7045|1|1"
+    cli := newRPC(zkConn, path, nodeVal)
+    if cli != nil {
+        t.Logf("cli: %+v", cli)
+
+        var args Args
+        args.A = 2
+        args.B = 3
+        var reply int
+        cli.Call("Arith.Multiply", &args, &reply)
+        t.Logf("reply: %+v", reply)
+        cli.Close()
+    } else {
+        t.Error("create rpc client error")
+    }
+}
