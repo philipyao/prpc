@@ -8,6 +8,7 @@ import (
     "time"
     "io"
     "log"
+    "strconv"
     "reflect"
     "unicode"
     "strings"
@@ -21,6 +22,10 @@ import (
 const (
     DefaultSrvIndexWeight         = 1
     DefaultMsgPack                = codec.SerializeTypeMsgpack
+)
+
+var (
+    DefaultZKPath       = "/__RPC__"
 )
 
 // Precompute the reflect type for error. Can't use error directly
@@ -58,7 +63,6 @@ func (s *service) call(server *Server, conn io.ReadWriteCloser, wg *sync.WaitGro
     if errInter != nil {
         errmsg = errInter.(error).Error()
     }
-    _ = errmsg
     //
     server.sendResponse(conn, reqmsg, replyv.Interface(),errmsg)
 }
@@ -87,7 +91,7 @@ type Server struct {
     addr    string
 
     weight  int
-    styp int
+    styp codec.SerializeType
     serializer codec.Serializer
 
     serviceMap map[string]*service
@@ -131,11 +135,13 @@ func New(zkAddr, group string, index int, addr string) *Server {
 
 func (s *Server) SetWeight(weight int) error {
     //todo
+    return nil
 }
 
 //设置打解包方法，默认msgpack
 func (s *Server) SetCodec(tp int) error {
     //todo
+    return nil
 }
 
 //注册rpc处理
@@ -196,7 +202,10 @@ func (s *Server) doServe(done chan struct{}, wg *sync.WaitGroup) {
     defer s.listener.Close()
 
     //register to zk
-
+    err := s.attachToZK()
+    if err != nil {
+        return
+    }
 
     for {
         select {
@@ -216,6 +225,27 @@ func (s *Server) doServe(done chan struct{}, wg *sync.WaitGroup) {
         log.Printf("[rpc] accept connection: %v", conn)
         go s.serveConn(conn)
     }
+}
+
+func (s *Server) attachToZK() error {
+    nodeVal := strings.Join([]string{s.addr, fmt.Sprintf("%v", s.styp), strconv.Itoa(s.weight)}, "|")
+    log.Printf("nodeVal: %v\n", nodeVal)
+    key := fmt.Sprintf("%v.%v", s.group, s.index)
+
+    var err error
+    exist, err := s.zk.Exists(DefaultZKPath)
+    if err != nil {
+        log.Printf("attachToZK error: %v\n", err)
+        return err
+    }
+    if !exist {
+        err = s.zk.Create(DefaultZKPath, []byte{})
+        if err != nil {
+            log.Printf("attachToZK error: %v\n", err)
+            return err
+        }
+    }
+    return s.zk.WriteEphemeral(DefaultZKPath + "/" + key, []byte(nodeVal))
 }
 
 func (s *Server) serveConn(conn io.ReadWriteCloser) {
