@@ -50,7 +50,7 @@ type RPCClient struct {
     weight  int
     styp    codec.SerializeType
 
-    conn    *net.Conn
+    conn    net.Conn
     serializer codec.Serializer
 
     mutex    sync.Mutex // protects following
@@ -80,12 +80,13 @@ func newRPC(zk *zkcli.Conn, path, nodeVal string) *RPCClient {
         return nil
     }
     slices[1] = strings.TrimSpace(slices[1])
-    styp, err := strconv.Atoi(slices[1])
+    tp, err := strconv.Atoi(slices[1])
     if err != nil {
         log.Printf("invalid styp: %v %v", slices[1], err)
         return nil
     }
-    serializer := codec.GetSerializer(codec.SerializeType(styp))
+    styp := codec.SerializeType(tp)
+    serializer := codec.GetSerializer(styp)
     if serializer == nil {
         log.Printf("styp %v not support", styp)
         return nil

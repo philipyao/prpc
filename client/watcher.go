@@ -11,7 +11,7 @@ type watcher struct {
 }
 
 func newWatcher(conn *zkcli.Conn, path string) *watcher {
-    return watcher{
+    return &watcher{
         conn: conn,
         path: path,
         stop: make(chan struct{}, 1),
@@ -19,7 +19,7 @@ func newWatcher(conn *zkcli.Conn, path string) *watcher {
 }
 
 func (w *watcher) Watch(cb func(p string, c []string, e error)) error {
-    return zkcli.WatchChildren(w.conn, w.path, cb, w.stop)
+    return w.conn.WatchChildren(w.path, cb, w.stop)
 }
 
 func (w *watcher) Stop() {

@@ -38,7 +38,10 @@ func New(zkAddr string) *Client {
     //获取数据
     nodes, err := zkConn.GetChildren(DefaultZKPath)
     for k, v := range nodes {
-        c.clientMap[k] = newRPC(zkConn, DefaultZKPath + k, string(v))
+        rpc := newRPC(zkConn, DefaultZKPath + "/" + k, string(v))
+        if rpc != nil {
+            c.clientMap[k] = rpc
+        }
     }
 
     c.watcher = newWatcher(zkConn, DefaultZKPath)
@@ -52,7 +55,7 @@ func New(zkAddr string) *Client {
     return c
 }
 
-func (c *client) RPC(group string, index int) *RPCClient {
+func (c *Client) Get(group string, index int) *RPCClient {
     id := fmt.Sprintf("%v.%v", group, index)
     return c.clientMap[id]
 }
