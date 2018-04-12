@@ -21,6 +21,7 @@ const (
 )
 
 var ErrShutdown = errors.New("connection is shut down")
+var ErrNetClosing = errors.New("use of closed network connection")
 type CBFn func(a interface{}, r interface{}, e error)
 
 // Call represents an active RPC.
@@ -44,12 +45,13 @@ func (call *Call) done() {
 
 
 type RPCClient struct {
-    //todo data watcher, service数据发生改变
+    //data watcher, service数据发生改变
+    zk      *zkcli.Conn
+    path    string
+    watcher *watcher
 
     //service 数据
-    path    string
     nodeVal string
-    zk      *zkcli.Conn
     addr    string
     weight  int
     styp    codec.SerializeType
@@ -132,6 +134,10 @@ func (rc *RPCClient) NodeVal() string {
     return rc.nodeVal
 }
 
+func (rc *RPCClient) Path() string {
+    return rc.path
+}
+
 func (rc *RPCClient) Call(serviceMethod string, args interface{}, reply interface{}) error {
     call := <- rc.doCall(serviceMethod, args, reply)
     return call.Error
@@ -165,7 +171,11 @@ func (rc *RPCClient) Close() error {
 
     //关闭tcpconn
     rc.conn.Close()
+
     //stop监听
+    if rc.watcher != nil {
+        rc.watcher.Stop()
+    }
 
     return nil
 }
@@ -210,7 +220,15 @@ func (rc *RPCClient) send(call *Call) {
 }
 
 func (rc *RPCClient) watch() {
-
+    if rc.watcher == nil {
+        rc.watcher = newWatcher(rc.zk, rc.path)
+        err := rc.watcher.Watch(func(p string, d []byte, e error){
+            //todo
+        })
+        if err != nil {
+            log.Printf("watch error %v", err)
+        }
+    }
 }
 
 func (rc *RPCClient) input() {
@@ -219,7 +237,9 @@ func (rc *RPCClient) input() {
     for err == nil {
         rmsg, err := message.NewResponse(rc.conn)
         if err != nil {
-            log.Printf("NewResponse error: %v", err)
+            if err != ErrNetClosing {
+                log.Printf("NewResponse error: %v", err)
+            }
             break
         }
         if rmsg.IsHeartbeat() {

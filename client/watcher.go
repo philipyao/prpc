@@ -18,8 +18,16 @@ func newWatcher(conn *zkcli.Conn, path string) *watcher {
     }
 }
 
-func (w *watcher) Watch(cb func(p string, c []string, e error)) error {
+func (w *watcher) WatchChildren(cb func(p string, c []string, e error)) error {
     return w.conn.WatchChildren(w.path, cb, w.stop)
+}
+
+func (w *watcher) Watch(cb func(p string, d []byte, e error)) error {
+    return w.conn.Watch(w.path, cb, w.stop)
+}
+
+func (w *watcher) Path() string {
+    return w.path
 }
 
 func (w *watcher) Stop() {
