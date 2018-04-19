@@ -99,6 +99,8 @@ type Server struct {
     //todo registry
 
     listener    *net.TCPListener
+
+    done chan struct{}
 }
 
 func New(zkAddr, group string, index int, addr string) *Server {
@@ -130,6 +132,7 @@ func New(zkAddr, group string, index int, addr string) *Server {
         serializer: codec.GetSerializer(DefaultMsgPack),
         serviceMap: make(map[string]*service),
         listener: l,
+        done: make(chan struct{}, 1),
     }
 }
 
@@ -149,8 +152,19 @@ func (s *Server) Register(rcvr interface{}, name string) error {
     return s.register(rcvr, name)
 }
 
-func (s *Server) Serve(done chan struct{}, wg *sync.WaitGroup) {
-    s.doServe(done, wg)
+func (s *Server) Serve(wg *sync.WaitGroup) {
+    s.doServe(wg)
+}
+
+func (s *Server) Stop() {
+    log.Println("try stop srv.")
+    close(s.done)
+}
+
+func (s *Server) Fini() {
+    log.Println("finilize srv...")
+    s.zk.Close()
+    s.listener.Close()
 }
 
 //========================================================================
@@ -196,7 +210,7 @@ func (server *Server) register(rcvr interface{}, name string) error {
     return nil
 }
 
-func (s *Server) doServe(done chan struct{}, wg *sync.WaitGroup) {
+func (s *Server) doServe(wg *sync.WaitGroup) {
     if wg != nil {
         defer wg.Done()
     }
@@ -210,7 +224,7 @@ func (s *Server) doServe(done chan struct{}, wg *sync.WaitGroup) {
 
     for {
         select {
-        case <-done:
+        case <-s.done:
             log.Printf("[rpc] stop listening on %v...", s.listener.Addr())
             return
         default:
@@ -222,8 +236,9 @@ func (s *Server) doServe(done chan struct{}, wg *sync.WaitGroup) {
                 continue
             }
             log.Printf("[rpc] Error: accept connection, %v", err.Error())
+            break
         }
-        log.Printf("[rpc] accept connection: %v", conn)
+        log.Printf("[rpc] accept new connection: %p", conn)
         go s.serveConn(conn)
     }
 }

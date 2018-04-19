@@ -3,7 +3,13 @@ package main
 import (
     "log"
     "sync"
+    "time"
     "github.com/philipyao/prpc/server"
+)
+
+const (
+    ZKAddr = "10.1.164.20:2181,10.1.164.20:2182"
+    DefaultSrvWeight    = 1
 )
 
 type Args struct {
@@ -20,22 +26,35 @@ func (t *Arith) Multiply(args *Args, reply *int) error {
 func main() {
     var wg sync.WaitGroup
 
-    zkAddr := "10.1.164.20:2181,10.1.164.20:2182"
-    srv := server.New(zkAddr, "global.platsvr", 1, "10.1.164.99:7045")
-    if srv != nil {
-        err := srv.Register(new(Arith), "Arith")
-        if err != nil {
-            log.Printf("register error %v\n", err)
-        } else {
-            log.Printf("begin to serve\n", err)
-            done := make(chan struct{}, 1)
-            wg.Add(1)
-            srv.Serve(done, &wg)
-        }
-    } else {
+    group := "global.platsvr"
+    addr := "127.0.0.1:7045"
+    srv := server.New(
+        ZKAddr,
+        group,
+        DefaultSrvWeight,
+        addr,
+    )
+    if srv == nil {
         log.Println("server.New error")
+        return
     }
 
+    err := srv.Register(new(Arith), "Arith")
+    if err != nil {
+        log.Printf("register error %v\n", err)
+        return
+    }
+
+    log.Printf("begin to serve\n", err)
+    wg.Add(1)
+    go srv.Serve(&wg)
+    go func(){
+       time.Sleep(5 * time.Second)
+
+        srv.Stop()
+    }()
+
     wg.Wait()
-    log.Println("to stop")
+    srv.Fini()
+    log.Println("stopped.")
 }
