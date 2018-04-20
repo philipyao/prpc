@@ -94,7 +94,7 @@ type Registry struct {
 
     //(group+version) -> service list
     // group + version 唯一标记一组服务
-    serviceMap    map[string][]Service
+    //serviceMap    map[string][]Service
 
     stop bool
 }
@@ -102,7 +102,7 @@ type Registry struct {
 func New(zkAddr string) *Registry {
     r := &Registry{
         rt: newRemoteZooKeeper(zkAddr),
-        serviceMap: make(map[string][]Service),
+        //serviceMap: make(map[string][]Service),
     }
     err := r.rt.Connect()
     if err != nil {
@@ -154,20 +154,34 @@ func (r *Registry) Subscribe(branch string, fnb fnBranch, fns fnService) {
     go r.watchBranch(branch)
 }
 
-func (r *Registry) Unsubscribe(watcher BranchWatcher) {
-    watcher.Stop()
-}
+//func (r *Registry) Unsubscribe(watcher BranchWatcher) {
+//    watcher.Stop()
+//}
 
-func (r *Registry) Lookup(group string, version string) []Service {
-    if version == "" {
-        version = DefaultServiceBranch
+//拉取branch下的所有服务
+func (r *Registry) Lookup(branch string) ([]*Service, error) {
+    if branch == "" {
+        branch = DefaultServiceBranch
     }
-    key := group + "-" + version
-    services, ok := r.serviceMap[key]
-    if !ok {
-        return nil
+
+    var svcs []*Service
+    svcMap, err := r.rt.ListService(branch)
+    if err != nil {
+        return nil, err
     }
-    return services
+    for k, v := range svcMap {
+        svc := new(Service)
+        err := svc.Decode(v)
+        if err != nil {
+            //log
+            continue
+        }
+        if k != svc.ID.Dump() {
+            //todo
+        }
+        svcs = append(svcs, svc)
+    }
+    return svcs, nil
 }
 
 ///====================================================================
