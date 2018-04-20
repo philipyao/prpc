@@ -22,10 +22,10 @@ type ServiceWatcher interface {
 }
 
 type remote interface {
-    Connect()
+    Connect() error
 
     //创建服务
-    CreateService(string, string, []byte) (string, error)
+    CreateService(string, string, []byte) error
 
     // 拉取特定branch下的所有服务
     ListService(string) (map[string][]byte, error)

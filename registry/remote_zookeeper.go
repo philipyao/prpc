@@ -42,42 +42,54 @@ func (swzk *ServiceWatcherZK) Stop() {
     close(swzk.exit)
 }
 
-
 type remoteZooKeeper struct {
+    zkAddr      string
     client      *zkcli.Conn
 }
 
-func (rz *remoteZooKeeper) Connect() {
-    //todo重试
+func newRemoteZooKeeper(zkAddr string) remote {
+    return &remoteZooKeeper{
+        zkAddr: zkAddr,
+    }
+}
+
+func (rz *remoteZooKeeper) Connect() error {
+    client, err := zkcli.Connect(rz.zkAddr)
+    if err != nil {
+        //todo重试
+        return err
+    }
+    //todo 重连
+    rz.client = client
+    return nil
 }
 
 // @param branch, 分支, 可以做灰度版本控制
 // @param: sid, 服务id
 // @param: data, 服务数据
-// 返回svcPath
-func (rz *remoteZooKeeper) CreateService(branch, sid string, data []byte) (string, error) {
+func (rz *remoteZooKeeper) CreateService(branch, sid string, data []byte) error {
     var err error
     branchPath := joinPath(DefaultZKRootPath, branch)
     err = rz.client.MakeDirP(branchPath)
     if err != nil {
-        return "", err
+        return err
     }
 
     key := joinPath(branchPath, sid)
     //判断key是否存在
     exist, err := rz.client.Exists(key)
     if err != nil {
-        return "", err
+        return err
     }
     if exist {
-        return "", fmt.Errorf("service already exist: sid<%v>", sid)
+        return fmt.Errorf("service already exist: sid<%v>", sid)
     }
 
-    err = rz.client.Create(key, []byte(data))
+    err = rz.client.CreateEphemeral(key, []byte(data))
     if err != nil {
-        return "", err
+        return err
     }
-    return key, nil
+    return nil
 }
 
 // 拉取特定branch下的所有service
@@ -109,7 +121,9 @@ func (rz *remoteZooKeeper) WatchService(svcPath string) ServiceWatcher {
 }
 
 func (rz *remoteZooKeeper) Close() {
-
+    if rz.client != nil {
+        rz.client.Close()
+    }
 }
 
 /////////////////////////////////////////////////////////
