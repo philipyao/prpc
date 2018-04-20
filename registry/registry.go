@@ -6,6 +6,8 @@ import (
     "strings"
     "strconv"
     "encoding/json"
+    "path/filepath"
+
     "github.com/philipyao/prpc/codec"
 )
 
@@ -79,14 +81,22 @@ func (ob *OptionBuilder) Build() *ServiceOption {
     return so
 }
 
+type fnBranch func(map[string]*Service, []string)
+type fnService func(string, *Service)
+
 type Registry struct {
     rt remote
     fb failback
     c cache
 
+    fnb fnBranch
+    fns fnService
+
     //(group+version) -> service list
     // group + version 唯一标记一组服务
     serviceMap    map[string][]Service
+
+    stop bool
 }
 
 func New(zkAddr string) *Registry {
@@ -132,11 +142,20 @@ func (r *Registry) Register(branch string, id SvcID, addr string, port int, opt 
     return nil
 }
 
-//client来订阅，指定branch
-func (r *Registry) Subscribe(branch string) {
+//client来订阅，指定branch下的所有服务
+func (r *Registry) Subscribe(branch string, fnb fnBranch, fns fnService) {
     if branch == "" {
         branch = DefaultServiceBranch
     }
+
+    r.fnb = fnb
+    r.fns = fns
+
+    go r.watchBranch(branch)
+}
+
+func (r *Registry) Unsubscribe(watcher BranchWatcher) {
+    watcher.Stop()
 }
 
 func (r *Registry) Lookup(group string, version string) []Service {
@@ -149,4 +168,58 @@ func (r *Registry) Lookup(group string, version string) []Service {
         return nil
     }
     return services
+}
+
+///====================================================================
+
+func (r *Registry) watchBranch(branch string) {
+    watcher := r.rt.WatchBranch(branch)
+    var event *BranchEvent
+    for {
+        event = watcher.Accept()
+        if event.Err != nil {
+            fmt.Printf("subscribe watch error %v, break", event.Err)
+            break
+        }
+        adds := make(map[string]*Service)
+        var (
+            svc *Service
+            err error
+        )
+        for k, v := range event.Adds {
+            svc = new(Service)
+            err = svc.Decode([]byte(v))
+            if err != nil {
+                //todo
+            }
+            adds[k] = svc
+
+            go r.watchService(k)
+        }
+        r.fnb(adds, event.Dels)
+    }
+}
+
+func (r *Registry) watchService(spath string) {
+    w := r.rt.WatchService(spath)
+    var (
+        err error
+        sev *ServiceEvent
+    )
+    for {
+        sev = w.Accept()
+        if sev.Err != nil {
+            fmt.Printf("watch service error %v, break", sev.Err)
+            break
+        }
+        tsvc := new(Service)
+        err = tsvc.Decode([]byte(sev.Value))
+        if err != nil {
+            //todo
+        }
+        if filepath.Base(sev.Path) != tsvc.ID.Dump() {
+            //todo
+        }
+        r.fns(sev.Path, tsvc)
+    }
 }
