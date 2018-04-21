@@ -3,12 +3,7 @@ package registry
 
 import (
     "fmt"
-    "strings"
-    "strconv"
-    "encoding/json"
     "path/filepath"
-
-    "github.com/philipyao/prpc/codec"
 )
 
 const (
@@ -16,97 +11,26 @@ const (
     DefaultServiceBranch       = "master"   //默认分支
 )
 
-//服务id
-type SvcID struct {
-    Group       string          `json:"group"`
-    Index       int             `json:"index"`
+type Listener interface {
+    OnBranchChange(map[string]*Service, []string)
+    OnServiceChange(string, *Service)
 }
-func (sid *SvcID) Dump() string {
-    return fmt.Sprintf("%v.%v", sid.Group, sid.Index)
-}
-func (sid *SvcID) Load(s string) error {
-    slices := strings.Split(s, ".")
-    if len(slices) != 2 {
-        return fmt.Errorf("invalid string: %v", s)
-    }
-    sid.Group = slices[0]
-    index, err := strconv.Atoi(slices[1])
-    if err != nil {
-        return fmt.Errorf("invalid index from string %v", s)
-    }
-    sid.Index = index
-    return nil
-}
-
-type Service struct {
-    ID          SvcID       `json:"id"` //服务id，唯一
-
-    Addr        string      `json:"addr"` //ip
-    Port        int         `json:"port"` //port
-
-    *ServiceOption
-}
-func (s *Service) Encode() ([]byte, error) {
-    return json.Marshal(s)
-}
-func (s *Service) Decode(data []byte) error {
-    return json.Unmarshal(data, s)
-}
-
-type ServiceOption struct {
-    Weight      int         `json:"weight"` //权重, 默认10
-    Styp        int         `json:"styp"`   //序列化, 默认messagepack
-}
-
-type OptionBuilder ServiceOption
-func (ob *OptionBuilder) SetWeight(w int) *OptionBuilder {
-    ob.Weight = w
-    return ob
-}
-func (ob *OptionBuilder) SetStyp(s int) *OptionBuilder {
-    ob.Styp = s
-    return ob
-}
-func (ob *OptionBuilder) Build() *ServiceOption {
-    so := &ServiceOption{
-        Weight: DefaultServiceWeight,
-        Styp: int(codec.SerializeTypeMsgpack),
-    }
-    if ob.Weight > 0 {
-        so.Weight = ob.Weight
-    }
-    if ob.Styp > 0 {
-        so.Styp = ob.Styp
-    }
-    return so
-}
-
-type fnBranch func(map[string]*Service, []string)
-type fnService func(string, *Service)
 
 type Registry struct {
     rt remote
     fb failback
     c cache
 
-    fnb fnBranch
-    fns fnService
-
-    //(group+version) -> service list
-    // group + version 唯一标记一组服务
-    //serviceMap    map[string][]Service
-
-    stop bool
+    listener Listener
 }
 
 func New(zkAddr string) *Registry {
     r := &Registry{
         rt: newRemoteZooKeeper(zkAddr),
-        //serviceMap: make(map[string][]Service),
     }
     err := r.rt.Connect()
     if err != nil {
-        //todo log
+        fmt.Printf("connect to remote error: %v\n", err)
         return nil
     }
     return r
@@ -116,6 +40,8 @@ func (r *Registry) Register(branch string, id SvcID, addr string, port int, opt 
     if branch == "" {
         branch = DefaultServiceBranch
     }
+
+    //todo check args
 
     svc := &Service{
         ID: id,
@@ -129,11 +55,13 @@ func (r *Registry) Register(branch string, id SvcID, addr string, port int, opt 
 
     svcData, err := svc.Encode()
     if err != nil {
+        fmt.Printf("encode service<%v> err %v\n", svc, err)
         return err
     }
-    fmt.Printf("======: %v\n", string(svcData))
+    fmt.Printf("====== register service: %v\n", string(svcData))
     err = r.rt.CreateService(branch, id.Dump(), svcData)
     if err != nil {
+        fmt.Printf("remote create service<%v> err %v\n", svc, err)
         return err
     }
 
@@ -143,13 +71,14 @@ func (r *Registry) Register(branch string, id SvcID, addr string, port int, opt 
 }
 
 //client来订阅，指定branch下的所有服务
-func (r *Registry) Subscribe(branch string, fnb fnBranch, fns fnService) {
+func (r *Registry) Subscribe(branch string, listener Listener) {
     if branch == "" {
         branch = DefaultServiceBranch
     }
-
-    r.fnb = fnb
-    r.fns = fns
+    if listener == nil {
+        panic("no listener specified")
+    }
+    r.listener = listener
 
     go r.watchBranch(branch)
 }
@@ -173,11 +102,12 @@ func (r *Registry) Lookup(branch string) ([]*Service, error) {
         svc := new(Service)
         err := svc.Decode(v)
         if err != nil {
-            //log
+            fmt.Printf("decode service err: %v, %v\n", err, string(v))
             continue
         }
-        if k != svc.ID.Dump() {
-            //todo
+        if filepath.Base(k) != svc.ID.Dump() {
+            fmt.Printf("service id mismatch: %v, %v\n", k, svc.ID.Dump())
+            continue
         }
         svcs = append(svcs, svc)
     }
@@ -210,7 +140,7 @@ func (r *Registry) watchBranch(branch string) {
 
             go r.watchService(k)
         }
-        r.fnb(adds, event.Dels)
+        r.listener.OnBranchChange(adds, event.Dels)
     }
 }
 
@@ -234,6 +164,6 @@ func (r *Registry) watchService(spath string) {
         if filepath.Base(sev.Path) != tsvc.ID.Dump() {
             //todo
         }
-        r.fns(sev.Path, tsvc)
+        r.listener.OnServiceChange(sev.Path, tsvc)
     }
 }

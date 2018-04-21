@@ -3,6 +3,7 @@ package registry
 import (
     "time"
     "testing"
+    "fmt"
 )
 
 func TestRegistry(t *testing.T) {
@@ -31,5 +32,13 @@ func TestRegistry(t *testing.T) {
         t.Fatalf("Register error: %v", err)
     }
 
-    time.Sleep(10 * time.Second)
+    time.Sleep(2 * time.Second)
+    svcs, err := registry.Lookup("")
+    if err != nil {
+        t.Fatal(err)
+    }
+    for _, svc := range svcs {
+        fmt.Println(svc)
+    }
+    time.Sleep(2 * time.Second)
 }
