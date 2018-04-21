@@ -6,7 +6,7 @@ import (
 )
 
 func TestRegistry(t *testing.T) {
-    registry := New("10.1.164.20:2181,10.1.164.20:2183")
+	registry := New("localhost:2181")
     if registry == nil {
         t.Fatal("new registry error")
     }
