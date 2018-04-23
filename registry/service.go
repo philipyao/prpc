@@ -62,7 +62,7 @@ func (ob *OptionBuilder) Build() *ServiceOption {
 // service定义
 type Service struct {
 	ID          SvcID       `json:"id"` //服务id，唯一
-	Addr        string      `json:"addr"` //ip
+	Addr        string      `json:"addr"` //ip:port
 
 	*ServiceOption
 }

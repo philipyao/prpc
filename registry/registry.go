@@ -113,6 +113,10 @@ func (r *Registry) Lookup(branch string) ([]*Service, error) {
     return svcs, nil
 }
 
+func (r *Registry) Close() {
+    r.rt.Close()
+}
+
 ///====================================================================
 
 func (r *Registry) watchBranch(branch string) {

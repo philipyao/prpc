@@ -1,5 +1,5 @@
 package server
 
 type RegConfigZooKeeper struct {
-	zkAddr 		string
+	ZKAddr 		string
 }

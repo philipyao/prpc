@@ -8,8 +8,7 @@ import (
 )
 
 const (
-    ZKAddr = "10.1.164.20:2181,10.1.164.20:2182"
-    DefaultSrvWeight    = 1
+    ZKAddr = "localhost:2181"
 )
 
 type Args struct {
@@ -26,12 +25,12 @@ func (t *Arith) Multiply(args *Args, reply *int) error {
 func main() {
     var wg sync.WaitGroup
 
-    group := "global.platsvr"
+    group := "zone1001.gamesvr"
+    index := 2
     addr := "127.0.0.1:7045"
     srv := server.New(
-        ZKAddr,
         group,
-        DefaultSrvWeight,
+        index,
         addr,
     )
     if srv == nil {
@@ -39,15 +38,15 @@ func main() {
         return
     }
 
-    err := srv.Register(new(Arith), "Arith")
+    err := srv.Handle(new(Arith), "Arith")
     if err != nil {
         log.Printf("register error %v\n", err)
         return
     }
 
-    log.Printf("begin to serve\n", err)
+    log.Println("begin to serve")
     wg.Add(1)
-    go srv.Serve(&wg)
+    go srv.Serve(&wg, &server.RegConfigZooKeeper{ZKAddr: ZKAddr})
     go func(){
        time.Sleep(5 * time.Second)
 

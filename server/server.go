@@ -8,7 +8,6 @@ import (
     "time"
     "io"
     "log"
-    "strconv"
     "reflect"
     "unicode"
     "strings"
@@ -17,7 +16,6 @@ import (
     "github.com/philipyao/prpc/codec"
     "github.com/philipyao/prpc/message"
     "github.com/philipyao/prpc/registry"
-    "github.com/philipyao/toolbox/zkcli"
 )
 
 const (
@@ -143,17 +141,26 @@ func (s *Server) Handle(rcvr interface{}, name string) error {
 }
 
 func (s *Server) Serve(wg *sync.WaitGroup, regConfig interface{}) {
-    var registry *registry.Registry
+    var reg *registry.Registry
     switch regConfig.(type) {
     case *RegConfigZooKeeper:
-        registry = registry.New(regConfig.(*RegConfigZooKeeper).zkAddr)
+        reg = registry.New(regConfig.(*RegConfigZooKeeper).ZKAddr)
     default:
     }
 
-    if registry == nil {
+    if reg == nil {
         panic("registry failed")
     }
-    s.registry = registry
+    s.registry = reg
+
+    builder := new(registry.OptionBuilder).SetWeight(s.weight).SetStyp(int(s.styp))
+    opt := builder.Build()
+    err := reg.Register("", registry.SvcID{Group: s.group, Index: s.index}, s.addr, opt)
+    if err != nil {
+        //todo
+        panic(fmt.Sprintf("register error: %v", err))
+    }
+
     s.doServe(wg)
 }
 
@@ -164,6 +171,7 @@ func (s *Server) Stop() {
 
 func (s *Server) Fini() {
     log.Println("finilize srv...")
+    s.registry.Close()
     s.listener.Close()
 }
 
