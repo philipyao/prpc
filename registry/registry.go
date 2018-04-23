@@ -36,7 +36,7 @@ func New(zkAddr string) *Registry {
     return r
 }
 
-func (r *Registry) Register(branch string, id SvcID, addr string, port int, opt *ServiceOption) error {
+func (r *Registry) Register(branch string, id SvcID, addr string, opt *ServiceOption) error {
     if branch == "" {
         branch = DefaultServiceBranch
     }
@@ -46,7 +46,6 @@ func (r *Registry) Register(branch string, id SvcID, addr string, port int, opt 
     svc := &Service{
         ID: id,
         Addr: addr,
-        Port: port,
     }
     if opt == nil {
         opt = new(OptionBuilder).Build()

@@ -14,18 +14,15 @@ import (
     "strings"
     "unicode/utf8"
 
-    "github.com/philipyao/toolbox/zkcli"
     "github.com/philipyao/prpc/codec"
     "github.com/philipyao/prpc/message"
+    "github.com/philipyao/prpc/registry"
+    "github.com/philipyao/toolbox/zkcli"
 )
 
 const (
-    DefaultSrvIndexWeight         = 1
+    DefaultSrvIndexWeight         = 10
     DefaultMsgPack                = codec.SerializeTypeMsgpack
-)
-
-var (
-    DefaultZKPath       = "/__RPC__"
 )
 
 // Precompute the reflect type for error. Can't use error directly
@@ -85,10 +82,9 @@ func isExportedOrBuiltinType(t reflect.Type) bool {
 
 
 type Server struct {
-    zk      *zkcli.Conn
     group   string
     index   int
-    addr    string
+    addr    string      //ip:port
 
     weight  int
     styp codec.SerializeType
@@ -96,20 +92,15 @@ type Server struct {
 
     serviceMap map[string]*service
 
-    //todo registry
+    //registry
+    registry *registry.Registry
 
     listener    *net.TCPListener
 
     done chan struct{}
 }
 
-func New(zkAddr, group string, index int, addr string) *Server {
-    zkConn, err := zkcli.Connect(zkAddr)
-    if err != nil {
-        log.Printf("zk connect returned error: %+v", err)
-        return nil
-    }
-
+func New(group string, index int, addr string) *Server {
     laddr, err := net.ResolveTCPAddr("tcp", addr)
     if err != nil {
         fmt.Printf("[rpc] ResolveTCPAddr() error: addr %v, err %v\n", addr, err)
@@ -123,7 +114,6 @@ func New(zkAddr, group string, index int, addr string) *Server {
     }
 
     return &Server{
-        zk: zkConn,
         group: group,
         index: index,
         addr: addr,
@@ -148,11 +138,22 @@ func (s *Server) SetCodec(tp int) error {
 }
 
 //注册rpc处理
-func (s *Server) Register(rcvr interface{}, name string) error {
-    return s.register(rcvr, name)
+func (s *Server) Handle(rcvr interface{}, name string) error {
+    return s.handle(rcvr, name)
 }
 
-func (s *Server) Serve(wg *sync.WaitGroup) {
+func (s *Server) Serve(wg *sync.WaitGroup, regConfig interface{}) {
+    var registry *registry.Registry
+    switch regConfig.(type) {
+    case *RegConfigZooKeeper:
+        registry = registry.New(regConfig.(*RegConfigZooKeeper).zkAddr)
+    default:
+    }
+
+    if registry == nil {
+        panic("registry failed")
+    }
+    s.registry = registry
     s.doServe(wg)
 }
 
@@ -163,13 +164,12 @@ func (s *Server) Stop() {
 
 func (s *Server) Fini() {
     log.Println("finilize srv...")
-    s.zk.Close()
     s.listener.Close()
 }
 
 //========================================================================
 
-func (server *Server) register(rcvr interface{}, name string) error {
+func (server *Server) handle(rcvr interface{}, name string) error {
     s := new(service)
     s.typ = reflect.TypeOf(rcvr)
     s.rcvr = reflect.ValueOf(rcvr)
@@ -216,12 +216,6 @@ func (s *Server) doServe(wg *sync.WaitGroup) {
     }
     defer s.listener.Close()
 
-    //register to zk
-    err := s.attachToZK()
-    if err != nil {
-        return
-    }
-
     for {
         select {
         case <-s.done:
@@ -241,27 +235,6 @@ func (s *Server) doServe(wg *sync.WaitGroup) {
         log.Printf("[rpc] accept new connection: %p", conn)
         go s.serveConn(conn)
     }
-}
-
-func (s *Server) attachToZK() error {
-    nodeVal := strings.Join([]string{s.addr, fmt.Sprintf("%v", s.styp), strconv.Itoa(s.weight)}, "|")
-    log.Printf("nodeVal: %v\n", nodeVal)
-    key := fmt.Sprintf("%v.%v", s.group, s.index)
-
-    var err error
-    exist, err := s.zk.Exists(DefaultZKPath)
-    if err != nil {
-        log.Printf("attachToZK error: %v\n", err)
-        return err
-    }
-    if !exist {
-        err = s.zk.Create(DefaultZKPath, []byte{})
-        if err != nil {
-            log.Printf("attachToZK error: %v\n", err)
-            return err
-        }
-    }
-    return s.zk.WriteEphemeral(DefaultZKPath + "/" + key, []byte(nodeVal))
 }
 
 func (s *Server) serveConn(conn io.ReadWriteCloser) {
