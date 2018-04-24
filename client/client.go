@@ -3,18 +3,13 @@ package client
 import (
     "fmt"
     "sync"
-    "log"
-    "path/filepath"
 
     "github.com/philipyao/prpc/registry"
-    "github.com/philipyao/toolbox/zkcli"
+    "log"
 )
 
 type Client struct {
     registry *registry.Registry
-    //dir watcher, rpc新增或者删除
-    watcher *watcher
-
     mu sync.Mutex //protect following
 
     clientMap map[string]*RPCClient
@@ -46,28 +41,9 @@ func New(regConfig interface{}) *Client {
     }
     c.addClients(svcs)
 
-    c.watcher = newWatcher(zkConn, DefaultZKPath)
-    err = c.watcher.WatchChildren(func(p string, children []string, e error){
-        log.Printf("watch trigger: %+v, %v", children, e)
-        if e != nil {
-            return
-        }
-        nodes := make(map[string][]byte)
-        for _, cp := range children {
-            path := c.watcher.Path() + "/" + cp
-            val, err := zkConn.Get(path)
-            if err != nil {
-                log.Printf("get child %v error %v", cp, err)
-                continue
-            }
-            nodes[path] = val
-        }
-        c.update(nodes)
-    })
-    if err != nil {
-        log.Printf("watch error %v", err)
-        return nil
-    }
+    // 开始监听registry的事件
+    reg.Subscribe("", c)
+
     return c
 }
 
@@ -83,37 +59,22 @@ func (c *Client) addClients(svcs []*registry.Service) {
             fmt.Printf("error addClients: exist %v\n", id)
             continue
         }
-
+        rpc := newRPC(svc)
+        if rpc == nil {
+            fmt.Printf("create rpc error: svr<%+v>", svc)
+            continue
+        }
+        c.clientMap[id] = rpc
+        fmt.Printf("add rpc: %+v\n", rpc)
     }
 }
 
-func (c *Client) update(nodes map[string][]byte) {
-    log.Printf("update: nodes %+v\n", nodes)
-    for id, rpc := range c.clientMap {
-        val, exist := nodes[rpc.Path()]
-        if !exist {
-            log.Printf("rpc not exist in nodes: id %v, delete it\n", id)
-            //关闭rpc
-            rpc.Close()
-            //safe delete
-            delete(c.clientMap, id)
-            continue
-        }
-        if string(val) != rpc.NodeVal() {
-            //this is not supposed to happen
-            panic("child val")
-        }
+func (c *Client) delClient(id string) {
+    rpc, exist := c.clientMap[id]
+    if !exist {
+        return
     }
-    for path, val := range nodes {
-        id := filepath.Base(path)
-        log.Printf("check nodes: id %v\n", id)
-        if _, exist := c.clientMap[id]; !exist {
-            //有新rpc server加入
-            rpc := newRPC(c.zk, path, string(val))
-            if rpc != nil {
-                c.clientMap[id] = rpc
-                log.Printf("find new client: id %v, rpc %+v\n", id, rpc)
-            }
-        }
-    }
+    log.Printf("delClient: id %v", id)
+    rpc.Close()
+    delete(c.clientMap, id)
 }

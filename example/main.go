@@ -28,7 +28,7 @@ func main() {
 
     group := "zone1001.gamesvr"
     index := 2
-    addr := "127.0.0.1:7045"
+    addr := "localhost:7045"
     srv := server.New(
         group,
         index,
@@ -49,7 +49,7 @@ func main() {
     wg.Add(1)
     go srv.Serve(&wg, &registry.RegConfigZooKeeper{ZKAddr: ZKAddr})
     go func(){
-       time.Sleep(5 * time.Second)
+       time.Sleep(50 * time.Second)
 
         srv.Stop()
     }()
