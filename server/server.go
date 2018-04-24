@@ -125,7 +125,10 @@ func New(group string, index int, addr string) *Server {
 }
 
 func (s *Server) SetWeight(weight int) error {
-    //todo
+    if weight < 0 {
+        return errors.New("invalid weight")
+    }
+    s.weight = weight
     return nil
 }
 

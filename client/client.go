@@ -52,6 +52,10 @@ func (c *Client) Get(group string, index int) *RPCClient {
     return c.clientMap[id]
 }
 
+func (c *Client) Select(group string) *RPCClient {
+    return c.selectByRandom(group)
+}
+
 func (c *Client) addClients(svcs []*registry.Service) {
     for _, svc := range svcs {
         id := svc.ID.Dump()
@@ -65,7 +69,7 @@ func (c *Client) addClients(svcs []*registry.Service) {
             continue
         }
         c.clientMap[id] = rpc
-        fmt.Printf("add rpc: %+v\n", rpc)
+        fmt.Printf("add rpc: %v, svc: %+v\n", rpc, rpc.svc)
     }
 }
 
