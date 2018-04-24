@@ -5,6 +5,7 @@ import (
     "sync"
     "time"
     "github.com/philipyao/prpc/server"
+    "github.com/philipyao/prpc/registry"
 )
 
 const (
@@ -46,7 +47,7 @@ func main() {
 
     log.Println("begin to serve")
     wg.Add(1)
-    go srv.Serve(&wg, &server.RegConfigZooKeeper{ZKAddr: ZKAddr})
+    go srv.Serve(&wg, &registry.RegConfigZooKeeper{ZKAddr: ZKAddr})
     go func(){
        time.Sleep(5 * time.Second)
 

@@ -6,15 +6,12 @@ import (
     "log"
     "path/filepath"
 
+    "github.com/philipyao/prpc/registry"
     "github.com/philipyao/toolbox/zkcli"
 )
 
-var (
-    DefaultZKPath       = "/__RPC__"
-)
-
 type Client struct {
-    zk *zkcli.Conn
+    registry *registry.Registry
     //dir watcher, rpc新增或者删除
     watcher *watcher
 
@@ -27,23 +24,27 @@ type Client struct {
     //todo middleware
 }
 
-func New(zkAddr string) *Client {
-    zkConn, err := zkcli.Connect(zkAddr)
-    if err != nil {
-        log.Printf("zk connect returned error: %+v", err)
+func New(regConfig interface{}) *Client {
+    var reg *registry.Registry
+    switch regConfig.(type) {
+    case *registry.RegConfigZooKeeper:
+        reg = registry.New(regConfig.(*registry.RegConfigZooKeeper).ZKAddr)
+    default:
+    }
+    if reg == nil {
+        fmt.Printf("make registry error: %+v\n", regConfig)
         return nil
     }
 
     c := new(Client)
     c.clientMap = make(map[string]*RPCClient)
-    c.zk = zkConn
-    //获取数据
-    nodes, err := zkConn.GetChildren(DefaultZKPath)
+
+    svcs, err := reg.Lookup("")
     if err != nil {
-        log.Printf("zk GetChildren error: %v\n", err)
+        fmt.Printf("registry lookup error: %v", err)
         return nil
     }
-    c.update(nodes)
+    c.addClients(svcs)
 
     c.watcher = newWatcher(zkConn, DefaultZKPath)
     err = c.watcher.WatchChildren(func(p string, children []string, e error){
@@ -73,6 +74,17 @@ func New(zkAddr string) *Client {
 func (c *Client) Get(group string, index int) *RPCClient {
     id := fmt.Sprintf("%v.%v", group, index)
     return c.clientMap[id]
+}
+
+func (c *Client) addClients(svcs []*registry.Service) {
+    for _, svc := range svcs {
+        id := svc.ID.Dump()
+        if _, exist := c.clientMap[id]; exist {
+            fmt.Printf("error addClients: exist %v\n", id)
+            continue
+        }
+
+    }
 }
 
 func (c *Client) update(nodes map[string][]byte) {

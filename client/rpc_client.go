@@ -8,16 +8,10 @@ import (
     "fmt"
     "sync"
     "strings"
-    "strconv"
 
     "github.com/philipyao/prpc/codec"
     "github.com/philipyao/prpc/message"
-    "github.com/philipyao/toolbox/zkcli"
-)
-
-const (
-    DefaultServiceWeight        = 1
-    NodeValNumber               = 3
+    "github.com/philipyao/prpc/registry"
 )
 
 var ErrShutdown = errors.New("connection is shut down")
@@ -45,16 +39,8 @@ func (call *Call) done() {
 
 
 type RPCClient struct {
-    //data watcher, service数据发生改变
-    zk      *zkcli.Conn
-    path    string
-    watcher *watcher
-
     //service 数据
-    nodeVal string
-    addr    string
-    weight  int
-    styp    codec.SerializeType
+    svc     *registry.Service
 
     conn    net.Conn
     serializer codec.Serializer
@@ -68,74 +54,35 @@ type RPCClient struct {
     //todo inservice 检测本rpc依赖的dependency是否ok
 }
 
-func newRPC(zk *zkcli.Conn, path, nodeVal string) *RPCClient {
-    //nodeVal: ip | styp | weight
-    if len(nodeVal) == 0 {
-        log.Println("empty nodeVal")
-        return nil
-    }
-    slices := strings.Split(nodeVal, "|")
-    if len(slices) != NodeValNumber {
-        log.Printf("mismatch nodeVal: %v", nodeVal)
-        return nil
-    }
-    addr := strings.TrimSpace(slices[0])
-    conn, err := net.Dial("tcp", addr)
-    if err != nil {
-        log.Printf("conn to server<%v> error: %v", addr, err)
-        return nil
-    }
-    slices[1] = strings.TrimSpace(slices[1])
-    tp, err := strconv.Atoi(slices[1])
-    if err != nil {
-        log.Printf("invalid styp: %v %v", slices[1], err)
-        return nil
-    }
-    styp := codec.SerializeType(tp)
+func newRPC(svc *registry.Service) *RPCClient {
+    styp := codec.SerializeType(svc.Styp)
     serializer := codec.GetSerializer(styp)
     if serializer == nil {
         log.Printf("styp %v not support", styp)
         return nil
     }
-    slices[2] = strings.TrimSpace(slices[2])
-    weight, err := strconv.Atoi(slices[2])
-    if err != nil {
-        log.Printf("invalid weight: %v %v", slices[2], err)
-        return nil
-    }
-    if weight < 0 {
-        log.Printf("nagtive weight: %v", weight)
-        return nil
-    }
+    weight := svc.Weight
     if weight == 0 {
         log.Printf("0 weight: %v", weight)
         return nil
     }
+    addr := strings.TrimSpace(svc.Addr)
+    conn, err := net.Dial("tcp", addr)
+    if err != nil {
+        log.Printf("conn to rpc server<%v> error %v", addr, err)
+        return nil
+    }
 
     client := &RPCClient{
-        zk: zk,
-        path: path,
-        nodeVal: nodeVal,
-        addr: addr,
+        svc: svc,
         conn: conn,
-        styp: styp,
-        weight: weight,
         serializer: serializer,
         pending: make(map[uint16]*Call),
     }
 
     go client.input()
-    go client.watch()
     go client.heartbeat()
     return client
-}
-
-func (rc *RPCClient) NodeVal() string {
-    return rc.nodeVal
-}
-
-func (rc *RPCClient) Path() string {
-    return rc.path
 }
 
 func (rc *RPCClient) Call(serviceMethod string, args interface{}, reply interface{}) error {
@@ -171,11 +118,6 @@ func (rc *RPCClient) Close() error {
 
     //关闭tcpconn
     rc.conn.Close()
-
-    //stop监听
-    if rc.watcher != nil {
-        rc.watcher.Stop()
-    }
 
     return nil
 }
@@ -217,18 +159,6 @@ func (rc *RPCClient) send(call *Call) {
     }
     log.Printf("pack ok, data len %v", len(data))
     rc.conn.Write(data)
-}
-
-func (rc *RPCClient) watch() {
-    if rc.watcher == nil {
-        rc.watcher = newWatcher(rc.zk, rc.path)
-        err := rc.watcher.Watch(func(p string, d []byte, e error){
-            //todo
-        })
-        if err != nil {
-            log.Printf("watch error %v", err)
-        }
-    }
 }
 
 func (rc *RPCClient) input() {

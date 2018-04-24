@@ -143,8 +143,8 @@ func (s *Server) Handle(rcvr interface{}, name string) error {
 func (s *Server) Serve(wg *sync.WaitGroup, regConfig interface{}) {
     var reg *registry.Registry
     switch regConfig.(type) {
-    case *RegConfigZooKeeper:
-        reg = registry.New(regConfig.(*RegConfigZooKeeper).ZKAddr)
+    case *registry.RegConfigZooKeeper:
+        reg = registry.New(regConfig.(*registry.RegConfigZooKeeper).ZKAddr)
     default:
     }
 

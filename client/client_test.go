@@ -3,11 +3,12 @@ package client
 import (
     "time"
     "testing"
+    "github.com/philipyao/prpc/registry"
 )
 
 //func TestClientCallRPC(t *testing.T) {
-//    zkAddr := "10.1.164.20:2181,10.1.164.20:2182"
-//    client := New(zkAddr)
+//    config := &registry.RegConfigZooKeeper{ZKAddr: "localhost:2181"}
+//    client := New(config)
 //    if client == nil {
 //        t.Fatal("error new client")
 //    }
@@ -29,8 +30,8 @@ import (
 //}
 
 func TestClientWatch(t *testing.T) {
-    zkAddr := "10.1.164.20:2181,10.1.164.20:2182"
-    client := New(zkAddr)
+    config := &registry.RegConfigZooKeeper{ZKAddr: "localhost:2181"}
+    client := New(config)
     if client == nil {
         t.Fatal("error new client")
     }
