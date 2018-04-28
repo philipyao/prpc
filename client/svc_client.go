@@ -4,17 +4,36 @@ import (
 	"github.com/philipyao/prpc/registry"
 	"fmt"
 	"errors"
+	"github.com/philipyao/prpc/codec"
+)
+
+const (
+	noSpecifiedVersion		= ""
+	noSpecifiedIndex		= -1
 )
 
 type endPoint struct{
 	index 		int
 	weight		int
 	version		string
+	styp 		codec.SerializeType
 	addr 		string
 	conn 		*RPCClient
 
 	//calltimes
 	//failtimes
+}
+//检查注册中心的数据发生变化后，可变数据(可在线更新的)是否发生改变
+//不检查不可变数据，如index，addr等
+//如果服务提供方的styp addr要修改，肯定会停掉服务，修改然后重新注册的，不会走到这里
+func (ep *endPoint) equalTo(node *registry.Node) bool {
+	return ep.weight == node.Weight &&
+			ep.version == node.Version
+}
+//更新可变数据(可在线更新的)
+func (ep *endPoint) update(node *registry.Node) {
+	ep.weight = node.Weight
+	ep.version = node.Version
 }
 
 type svcClient struct {
@@ -22,11 +41,11 @@ type svcClient struct {
 	service 	string
 
 	//options
-	version 	string		//特定版本
-	index 		int			//特定index的endpoint
-	selectType  selectType	//
+	version 	string		//选择特定版本
+	index 		int			//选择特定index的endpoint
+	selectType  selectType	//选取算法
 
-	selector selector
+	selector selector		//选择器
 	endPoints []*endPoint
 
 	registry *registry.Registry
@@ -37,6 +56,7 @@ func (sc *svcClient) Call(serviceMethod string, args interface{}, reply interfac
 	ep := sc.selector(sc.endPoints)
 	if ep == nil {
 		//todo
+		return errors.New("no available rpc servers")
 	}
 
 	//failover机制
@@ -73,23 +93,15 @@ func (sc *svcClient) setSelectType(styp selectType) error {
 	return nil
 }
 
-// svcClient要监听registry的对于service的事件
-func (sc *svcClient) watch() {
-	//如果目录group.service没有
-	//则可以新建（永久节点。todo 如果group没有了，怎么删除？）
-
-	//version过滤
-}
-
 //===========================================================
 
-func newSvcClient(group, service string, registry *registry.Registry, opts ...fnOptionService) *svcClient {
+func newSvcClient(service, group string, reg *registry.Registry, opts ...fnOptionService) *svcClient {
 	sc := &svcClient{
 		group: group,
 		service: service,
-		registry: registry,
-		version: "",	//默认不指定版本
-		index: -1,		//默认不指定index
+		registry: reg,
+		version: registry.DefaultVersion,		//默认匹配缺省版本
+		index: noSpecifiedIndex,				//默认不指定index
 		selectType: SelectTypeWeightedRandom,   //默认按照权重随机获得endpoint
 	}
 	//修饰svcClient
@@ -101,12 +113,16 @@ func newSvcClient(group, service string, registry *registry.Registry, opts ...fn
 		typ: sc.selectType,
 		index: sc.index,
 	}
-	sc.selector = createSelector(cs)
+	slt, err := createSelector(cs)
+	if err != nil {
+		//handle err
+		return nil
+	}
+	sc.selector = slt
 
-	//registry.GetService获取endpoints
+	//todo 获取endpoints, watch endpoints的变化
+	//nodes, err := reg.Subscribe(service, group, sc)
 	//提前把version过滤一遍
-
-	//todo watch endpoints的变化
 
 	return sc
 }

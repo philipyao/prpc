@@ -6,21 +6,10 @@ import (
 	//"path/filepath"
 )
 
-func (sc *svcClient) OnBranchChange(adds map[string]*registry.Service, dels []string) {
-	log.Printf("OnBranchChange: adds %+v, dels %+v", adds, dels)
-	var svcs []*registry.Service
-	for _, svc := range adds {
-		svcs = append(svcs, svc)
-	}
-	if len(svcs) > 0 {
-		//sc.addClients(svcs)
-	}
-	//for _, key := range dels {
-		//id := filepath.Base(key)
-		//sc.delClient(id)
-	//}
+func (sc *svcClient) OnServiceChange(adds map[string]*registry.Node, dels []string) {
+	log.Printf("OnServiceChange: adds %+v, dels %+v", adds, dels)
 }
 
-func (sc *svcClient) OnServiceChange(key string, svc *registry.Service) {
-	log.Printf("OnServiceChange: key %s, svc %+v", key, svc)
+func (sc *svcClient) OnNodeChange(key string, node *registry.Node) {
+	log.Printf("OnNodeChange: key %s, svc %+v", key, node)
 }

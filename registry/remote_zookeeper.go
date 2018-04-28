@@ -3,48 +3,60 @@ package registry
 import (
     "fmt"
     "github.com/philipyao/toolbox/zkcli"
+    "sync"
 )
 
 const (
-    DefaultZKRootPath       = "/__PRPC__"
+    defaultZKRootPath       = "/__PRPC__"
 )
-
-type BranchWatcherZK struct {
-    exit chan struct{}
-    events chan *zkcli.EventDataChild
-}
-func (bwzk *BranchWatcherZK) Accept() *BranchEvent {
-    zkev := <- bwzk.events
-    return &BranchEvent{
-        Err: zkev.Err,
-        Adds: zkev.Adds,
-        Dels: zkev.Dels,
-    }
-}
-func (bwzk *BranchWatcherZK) Stop() {
-    close(bwzk.exit)
-}
 
 type ServiceWatcherZK struct {
     exit chan struct{}
-    events chan *zkcli.EventDataNode
+    events chan *zkcli.EventDataChild
 }
 func (swzk *ServiceWatcherZK) Accept() *ServiceEvent {
     zkev := <- swzk.events
     return &ServiceEvent{
         Err: zkev.Err,
-        Path: zkev.Path,
-        Value: zkev.Value,
-        OldVal: zkev.OldVal,
+        Adds: zkev.Adds,
+        Dels: zkev.Dels,
     }
 }
 func (swzk *ServiceWatcherZK) Stop() {
+    select {
+    case <- swzk.exit:  //防止重复关闭channel
+        return
+    default:
+    }
     close(swzk.exit)
+}
+
+type NodeWatcherZK struct {
+    exit chan struct{}
+    events chan *zkcli.EventDataNode
+}
+func (nwzk *NodeWatcherZK) Accept() *NodeEvent {
+    zkev := <- nwzk.events
+    return &NodeEvent{
+        Err: zkev.Err,
+        Path: zkev.Path,
+        Value: zkev.Value,
+    }
+}
+func (nwzk *NodeWatcherZK) Stop() {
+    select {
+    case <- nwzk.exit:  //防止重复关闭channel
+        return
+    default:
+    }
+    close(nwzk.exit)
 }
 
 type remoteZooKeeper struct {
     zkAddr      string
     client      *zkcli.Conn
+
+    once sync.Once
 }
 
 func newRemoteZooKeeper(zkAddr string) remote {
@@ -64,69 +76,83 @@ func (rz *remoteZooKeeper) Connect() error {
     return nil
 }
 
-// @param branch, 分支, 可以做灰度版本控制
-// @param: sid, 服务id
-// @param: data, 服务数据
-func (rz *remoteZooKeeper) CreateService(branch, sid string, data []byte) error {
+func (rz *remoteZooKeeper) CreateServiceNode(service, key string, data []byte) error {
     var err error
-    branchPath := joinPath(DefaultZKRootPath, branch)
-    err = rz.client.MakeDirP(branchPath)
+    servicePath := makePath(defaultZKRootPath, service)
+    err = rz.client.MakeDirP(servicePath)
     if err != nil {
         return err
     }
 
-    key := joinPath(branchPath, sid)
+    nodePath := makePath(servicePath, key)
     //判断key是否存在
-    exist, err := rz.client.Exists(key)
+    exist, err := rz.client.Exists(nodePath)
     if err != nil {
         return err
     }
     if exist {
-        return fmt.Errorf("service already exist: sid<%v>", sid)
+        return fmt.Errorf("node already exist: path<%v>", nodePath)
     }
 
-    err = rz.client.CreateEphemeral(key, []byte(data))
+    err = rz.client.CreateEphemeral(nodePath, []byte(data))
     if err != nil {
         return err
     }
     return nil
 }
 
-// 拉取特定branch下的所有service
-func (rz *remoteZooKeeper) ListService(branch string) (map[string][]byte, error) {
-    return rz.client.GetChildren(joinPath(DefaultZKRootPath, branch))
+func (rz *remoteZooKeeper) ListServiceNode(service string) (map[string][]byte, error) {
+    //如果service目录不存在，则创建
+    servicePath := makePath(defaultZKRootPath, service)
+    err := rz.client.MakeDirP(servicePath)
+    if err != nil {
+        return nil, err
+    }
+    return rz.client.GetChildren(servicePath)
 }
 
-//监听分支：服务新增或者减少
-func (rz *remoteZooKeeper) WatchBranch(branch string) BranchWatcher {
-    watcher := &BranchWatcherZK{
+func (rz *remoteZooKeeper) WatchService(service string) ServiceWatcher {
+    watcher := &ServiceWatcherZK{
         exit: make(chan struct{}),
         events: make(chan *zkcli.EventDataChild, 10),
     }
 
-    zkPath := joinPath(DefaultZKRootPath, branch)
-    rz.client.WatchDir(zkPath, watcher.events, watcher.exit)
+    //如果service目录不存在，则创建
+    servicePath := makePath(defaultZKRootPath, service)
+    err := rz.client.MakeDirP(servicePath)
+    if err != nil {
+        go func() {
+           watcher.events <- &zkcli.EventDataChild{Err: fmt.Errorf("MakeDirP error: %v, %v", service, err)}
+        }()
+        return watcher
+    }
+    rz.client.WatchDir(servicePath, watcher.events, watcher.exit)
     return watcher
 }
 
-//监听服务：数据变化
-func (rz *remoteZooKeeper) WatchService(svcPath string) ServiceWatcher {
-    watcher := &ServiceWatcherZK{
+func (rz *remoteZooKeeper) WatchNode(nodePath string) NodeWatcher {
+    watcher := &NodeWatcherZK{
         exit: make(chan struct{}),
         events: make(chan *zkcli.EventDataNode, 10),
     }
 
-    rz.client.WatchNode(svcPath, watcher.events, watcher.exit)
+    rz.client.WatchNode(nodePath, watcher.events, watcher.exit)
     return watcher
 }
 
 func (rz *remoteZooKeeper) Close() {
-    if rz.client != nil {
+    rz.once.Do(func(){
         rz.client.Close()
-    }
+        rz.client = nil
+    })
 }
 
 /////////////////////////////////////////////////////////
-func joinPath(a, b string) string {
-    return a + "/" + b
+func makePath(prefix string, entries ...string) string {
+    path := prefix
+    for _, entry := range entries {
+        if entry == "" {continue}
+        path += "/" + entry
+    }
+    return path
 }

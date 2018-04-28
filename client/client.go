@@ -5,7 +5,6 @@ import (
     "sync"
 
     "github.com/philipyao/prpc/registry"
-    //"log"
 )
 
 type Client struct {
@@ -31,22 +30,11 @@ func New(regConfig interface{}) *Client {
     }
 
     c := new(Client)
-    //c.clientMap = make(map[string]*RPCClient)
-	//
-    //svcs, err := reg.Lookup("")
-    //if err != nil {
-    //    fmt.Printf("registry lookup error: %v", err)
-    //    return nil
-    //}
-    //c.addClients(svcs)
-
-    // 开始监听registry的事件
-    //reg.Subscribe("", c)
-
+    //todo
     return c
 }
 
-func (c *Client) Service(group string, service string, opts ...fnOptionService) *svcClient {
+func (c *Client) Service(service, group string, opts ...fnOptionService) *svcClient {
     //GetOption可以指定index/version等
     //todo 如果clientmap里没有，则应该是新的svcClient
     //则尝试新建svcClient

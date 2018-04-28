@@ -11,7 +11,6 @@ import (
 
     "github.com/philipyao/prpc/codec"
     "github.com/philipyao/prpc/message"
-    "github.com/philipyao/prpc/registry"
 )
 
 var ErrShutdown = errors.New("connection is shut down")
@@ -39,9 +38,6 @@ func (call *Call) done() {
 
 
 type RPCClient struct {
-    //service 数据
-    svc     *registry.Service
-
     conn    net.Conn
     serializer codec.Serializer
 
@@ -54,19 +50,19 @@ type RPCClient struct {
     //todo inservice 检测本rpc依赖的dependency是否ok
 }
 
-func newRPC(svc *registry.Service) *RPCClient {
-    styp := codec.SerializeType(svc.Styp)
+func newRPC(ep *endPoint) *RPCClient {
+    styp := codec.SerializeType(ep.styp)
     serializer := codec.GetSerializer(styp)
     if serializer == nil {
         log.Printf("styp %v not support", styp)
         return nil
     }
-    weight := svc.Weight
+    weight := ep.weight
     if weight == 0 {
         log.Printf("0 weight: %v", weight)
         return nil
     }
-    addr := strings.TrimSpace(svc.Addr)
+    addr := strings.TrimSpace(ep.addr)
     conn, err := net.Dial("tcp", addr)
     if err != nil {
         log.Printf("conn to rpc server<%v> error %v", addr, err)
@@ -74,7 +70,6 @@ func newRPC(svc *registry.Service) *RPCClient {
     }
 
     client := &RPCClient{
-        svc: svc,
         conn: conn,
         serializer: serializer,
         pending: make(map[uint16]*Call),
