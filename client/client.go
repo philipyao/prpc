@@ -5,16 +5,15 @@ import (
     "sync"
 
     "github.com/philipyao/prpc/registry"
-    "log"
+    //"log"
 )
 
 type Client struct {
     registry *registry.Registry
     mu sync.Mutex //protect following
 
-    clientMap map[string]*RPCClient
-
-    //todo selector
+    //group.service -> svcClient
+    services map[string]*svcClient
 
     //todo middleware
 }
@@ -32,53 +31,31 @@ func New(regConfig interface{}) *Client {
     }
 
     c := new(Client)
-    c.clientMap = make(map[string]*RPCClient)
-
-    svcs, err := reg.Lookup("")
-    if err != nil {
-        fmt.Printf("registry lookup error: %v", err)
-        return nil
-    }
-    c.addClients(svcs)
+    //c.clientMap = make(map[string]*RPCClient)
+	//
+    //svcs, err := reg.Lookup("")
+    //if err != nil {
+    //    fmt.Printf("registry lookup error: %v", err)
+    //    return nil
+    //}
+    //c.addClients(svcs)
 
     // 开始监听registry的事件
-    reg.Subscribe("", c)
+    //reg.Subscribe("", c)
 
     return c
 }
 
-func (c *Client) Get(group string, index int) *RPCClient {
-    id := fmt.Sprintf("%v.%v", group, index)
-    return c.clientMap[id]
-}
+func (c *Client) Service(group string, service string, opts ...fnOptionService) *svcClient {
+    //GetOption可以指定index/version等
+    //todo 如果clientmap里没有，则应该是新的svcClient
+    //则尝试新建svcClient
+    //如果成功，则加入缓存
 
-func (c *Client) Select(group string) *RPCClient {
-    return c.selectByRandom(group)
-}
+    //新建svcClient的时候，从registry里获取所有endpoints，结合选择策略，生成selector必报
 
-func (c *Client) addClients(svcs []*registry.Service) {
-    for _, svc := range svcs {
-        id := svc.ID.Dump()
-        if _, exist := c.clientMap[id]; exist {
-            fmt.Printf("error addClients: exist %v\n", id)
-            continue
-        }
-        rpc := newRPC(svc)
-        if rpc == nil {
-            fmt.Printf("create rpc error: svr<%+v>", svc)
-            continue
-        }
-        c.clientMap[id] = rpc
-        fmt.Printf("add rpc: %v, svc: %+v\n", rpc, rpc.svc)
-    }
-}
-
-func (c *Client) delClient(id string) {
-    rpc, exist := c.clientMap[id]
-    if !exist {
-        return
-    }
-    log.Printf("delClient: id %v", id)
-    rpc.Close()
-    delete(c.clientMap, id)
+    id := fmt.Sprintf("%v.%v", group, service)
+    //todo id这里不行，要唯一，每次调用Service的id是否一致，要算所有参数的hash
+    //如果hash一致才算同一个svcClient，否则即使group和service一样，都不是一个svcClient
+    return c.services[id]
 }
