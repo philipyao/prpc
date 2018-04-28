@@ -2,35 +2,38 @@ package registry
 
 import (
 	"github.com/philipyao/prpc/codec"
-	"errors"
+	"log"
 )
 
 const (
 	maxWeight		= 10000
 )
 
+//服务注册修饰项
 type fnOptionNode func(node *Node) error
-func WithWeight(weight int) (fnOptionNode, error) {
+func WithWeight(weight int) fnOptionNode {
 	if weight < 0 || weight > maxWeight {
-		return nil, errors.New("invalid weight value")
+		log.Println("invalid weight value")
+		return nil
 	}
 	return func(node *Node) error {
 		node.Weight = weight
 		return nil
-	}, nil
+	}
 }
-func WithSerialize(styp codec.SerializeType) (fnOptionNode, error) {
+func WithSerialize(styp codec.SerializeType) fnOptionNode {
 	return func(node *Node) error {
 		node.Styp = int(styp)
 		return nil
-	}, nil
+	}
 }
-func WithVersion(version string) (fnOptionNode, error) {
+func WithVersion(version string) fnOptionNode {
 	if version == "" {
-		return nil, errors.New("empty version not allowed")
+		log.Println("empty version not allowed")
+		return nil
 	}
 	return func(node *Node) error {
 		node.Version = version
 		return nil
-	}, nil
+	}
 }

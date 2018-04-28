@@ -59,7 +59,10 @@ func (r *Registry) Register(service, group string, index int, addr string, opts 
             Version: DefaultVersion,                //缺省版本号
         },
     }
-    for _, fnOpt := range opts {
+    for n, fnOpt := range opts {
+        if fnOpt == nil {
+            return fmt.Errorf("option err: decrator node, no. %v", n)
+        }
         err := fnOpt(node)
         if err != nil {
             return err

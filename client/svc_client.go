@@ -106,6 +106,9 @@ func newSvcClient(service, group string, reg *registry.Registry, opts ...fnOptio
 	}
 	//修饰svcClient
 	for _, fnOpt := range opts {
+		if fnOpt == nil {
+			return nil
+		}
 		fnOpt(sc)
 	}
 	//设置selector
