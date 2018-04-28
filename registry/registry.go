@@ -59,16 +59,12 @@ func (r *Registry) Register(service, group string, index int, addr string, opts 
             Version: DefaultVersion,                //缺省版本号
         },
     }
-    for n, fnOpt := range opts {
-        if fnOpt == nil {
-            return fmt.Errorf("option err: decrator node, no. %v", n)
-        }
-        err := fnOpt(node)
-        if err != nil {
-            return err
-        }
+    //修饰
+    err := node.decorate(opts...)
+    if err != nil {
+        return err
     }
-    nodeData, err := node.Encode()
+    nodeData, err := node.encode()
     if err != nil {
         fmt.Printf("encode node<%+v> err %v\n", node, err)
         return err
@@ -77,7 +73,7 @@ func (r *Registry) Register(service, group string, index int, addr string, opts 
 
     //todo 检查cache是否存在，否则报错
 
-    err = r.rt.CreateServiceNode(makeServiceKey(service, group), node.Key(), nodeData)
+    err = r.rt.CreateServiceNode(makeServiceKey(service, group), node.key(), nodeData)
     if err != nil {
         fmt.Printf("remote create node<%+v> err %v\n", node, err)
         return err
@@ -103,17 +99,17 @@ func (r *Registry) Subscribe(service, group string, listener Listener) ([]*Node,
         return nil, err
     }
     for k, v := range nodeMap {
-        svc := new(Node)
-        err := svc.Decode(v)
+        node := new(Node)
+        err := node.decode(v)
         if err != nil {
             fmt.Printf("decode node err: %v, %v\n", err, string(v))
             continue
         }
-        if filepath.Base(k) != svc.ID.Dump() {
-            fmt.Printf("node id mismatch: %v, %v\n", k, svc.ID.Dump())
+        if filepath.Base(k) != node.ID.Dump() {
+            fmt.Printf("node id mismatch: %v, %v\n", k, node.ID.Dump())
             continue
         }
-        nodes = append(nodes, svc)
+        nodes = append(nodes, node)
     }
 
     r.wg.Add(1)
@@ -156,7 +152,7 @@ func (r *Registry) watchService(service, group string) {
         )
         for k, v := range event.Adds {
             node = new(Node)
-            err = node.Decode([]byte(v))
+            err = node.decode([]byte(v))
             if err != nil {
                 //todo
                 continue
@@ -192,7 +188,7 @@ func (r *Registry) watchNode(nodePath string) {
             break
         }
         tnode := new(Node)
-        err = tnode.Decode([]byte(nev.Value))
+        err = tnode.decode([]byte(nev.Value))
         if err != nil {
             //todo
             fmt.Printf("decode node err: %v, %+v\n", nodePath, nev)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"errors"
 	"github.com/philipyao/prpc/codec"
+	"log"
 )
 
 const (
@@ -93,6 +94,19 @@ func (sc *svcClient) setSelectType(styp selectType) error {
 	return nil
 }
 
+func (sc *svcClient) decorate(opts ...fnOptionService) error {
+	for n, fnOpt := range opts {
+		if fnOpt == nil {
+			return fmt.Errorf("err: decrator service client, nil option no.%v", n + 1)
+		}
+		err := fnOpt(sc)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 //===========================================================
 
 func newSvcClient(service, group string, reg *registry.Registry, opts ...fnOptionService) *svcClient {
@@ -105,11 +119,10 @@ func newSvcClient(service, group string, reg *registry.Registry, opts ...fnOptio
 		selectType: SelectTypeWeightedRandom,   //默认按照权重随机获得endpoint
 	}
 	//修饰svcClient
-	for _, fnOpt := range opts {
-		if fnOpt == nil {
-			return nil
-		}
-		fnOpt(sc)
+	err := sc.decorate(opts...)
+	if err != nil {
+		log.Println(err)
+		return nil
 	}
 	//设置selector
 	cs := configSelect{

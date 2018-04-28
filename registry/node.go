@@ -43,13 +43,25 @@ type Node struct {
 
 	*NodeOption
 }
-func (s *Node) Encode() ([]byte, error) {
-	return json.Marshal(s)
+func (node *Node) encode() ([]byte, error) {
+	return json.Marshal(node)
 }
-func (s *Node) Decode(data []byte) error {
-	return json.Unmarshal(data, s)
+func (node *Node) decode(data []byte) error {
+	return json.Unmarshal(data, node)
 }
-func (s *Node) Key() string {
-	return s.ID.Dump()
+func (node *Node) key() string {
+	return node.ID.Dump()
+}
+func (node *Node) decorate(opts ...fnOptionNode) error {
+	for n, fnOpt := range opts {
+		if fnOpt == nil {
+			return fmt.Errorf("err: decrator node, nil option no.%v", n + 1)
+		}
+		err := fnOpt(node)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
