@@ -84,7 +84,7 @@ func (r *Registry) Register(service, group string, index int, addr string, opts 
     return nil
 }
 
-//client来订阅特定service，如果服务节点有增删或者节点数据变化，会有通知
+//client来订阅特定service，如果服务节点有增删或者节点数据变化，会有通知；
 //返回所有节点，供客户端初始化
 func (r *Registry) Subscribe(service, group string, listener Listener) ([]*Node, error) {
     //todo check args
@@ -110,6 +110,9 @@ func (r *Registry) Subscribe(service, group string, listener Listener) ([]*Node,
             continue
         }
         nodes = append(nodes, node)
+
+        r.wg.Add(1)
+        go r.watchNode(k)
     }
 
     r.wg.Add(1)
@@ -142,7 +145,7 @@ func (r *Registry) watchService(service, group string) {
     for {
         event = watcher.Accept()
         if event.Err != nil {
-            fmt.Printf("subscribe watch error %v, break", event.Err)
+            fmt.Printf("Accept error: %v, break\n", event.Err)
             break
         }
         adds := make(map[string]*Node)
@@ -180,7 +183,7 @@ func (r *Registry) watchNode(nodePath string) {
     for {
         nev = w.Accept()
         if nev.Err != nil {
-            fmt.Printf("watch service error %v, break", nev.Err)
+            fmt.Printf("watch node error: %v, break\n", nev.Err)
             break
         }
         if nev.Path != nodePath {
