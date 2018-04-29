@@ -3,42 +3,140 @@ package registry
 import (
     "time"
     "testing"
+    "github.com/philipyao/prpc/codec"
     "fmt"
 )
 
-func TestRegistry(t *testing.T) {
+func TestRegister(t *testing.T) {
     registry := New("localhost:2181")
     if registry == nil {
         t.Fatal("new registry error")
     }
 
     var err error
-    err = registry.Register("", SvcID{Group: "group11", Index: 1}, "127.0.0.1:1234", nil)
+    err = registry.Register(
+        "Game",
+        "Zone1001",
+        1,
+        "127.0.0.1:1234",
+    )
+    if err != nil {
+        t.Fatalf("Register error: %v", err)
+    }
+    err = registry.Register(
+        "Game",
+        "Zone1001",
+        2,
+        "127.0.0.1:1235",
+        WithWeight(20),
+    )
+    if err != nil {
+        t.Fatalf("Register error: %v", err)
+    }
+    err = registry.Register(
+        "Game",
+        "Zone1001",
+        3,
+        "127.0.0.1:1236",
+        WithWeight(5),
+        WithVersion("v1.1"),
+        WithSerialize(codec.SerializeTypeJson),
+    )
+    if err != nil {
+        t.Fatalf("Register error: %v", err)
+    }
+    err = registry.Register(
+        "Game",
+        "Zone1002",
+        1,
+        "127.0.0.1:2231",
+        WithWeight(20),
+    )
+    if err != nil {
+        t.Fatalf("Register error: %v", err)
+    }
+    err = registry.Register(
+        "Rank",
+        "World1000",
+        1,
+        "127.0.0.1:3231",
+    )
     if err != nil {
         t.Fatalf("Register error: %v", err)
     }
 
-    builder := new(OptionBuilder).SetWeight(5)
-    opt := builder.Build()
-    err = registry.Register("", SvcID{Group: "group21", Index: 2}, "127.0.0.1:4567", opt)
+    time.Sleep(1 * time.Second)
+}
+
+func TestRegisterDuplicated(t *testing.T) {
+    reg := New("localhost:2181")
+    if reg == nil {
+        t.Fatal("new registry error")
+    }
+
+    var err error
+    err = reg.Register(
+        "Game",
+        "Zone1001",
+        11,
+        "127.0.0.1:8001",
+        WithVersion(DefaultVersion),
+    )
     if err != nil {
         t.Fatalf("Register error: %v", err)
     }
+    err = reg.Register(
+        "Game",
+        "Zone1001",
+        11,
+        "127.0.0.1:8002",
+        WithVersion(DefaultVersion),
+    )
+    if err == nil {
+        t.Fatal("duplicated with no error")
+    }
+    fmt.Println(err)
+    time.Sleep(1 * time.Second)
+}
 
-    builder = new(OptionBuilder).SetWeight(5).SetStyp(2)
-    opt = builder.Build()
-    err = registry.Register("", SvcID{Group: "group31", Index: 3}, "127.0.0.1:9111", opt)
-    if err != nil {
-        t.Fatalf("Register error: %v", err)
+func TestRegisterDecorateWrong(t *testing.T) {
+    reg := New("localhost:2181")
+    if reg == nil {
+        t.Fatal("new registry error")
     }
 
-    time.Sleep(2 * time.Second)
-    svcs, err := registry.Lookup("")
-    if err != nil {
-        t.Fatal(err)
+    var err error
+    err = reg.Register(
+        "Game",
+        "Zone1001",
+        1,
+        "127.0.0.1:8001",
+        WithWeight(-10),
+    )
+    if err == nil {
+        t.Fatal("decorate with no error")
     }
-    for _, svc := range svcs {
-        fmt.Println(svc)
+    fmt.Println(err)
+    err = reg.Register(
+        "Game",
+        "Zone1001",
+        2,
+        "127.0.0.1:8002",
+        WithWeight(maxWeight + 1),
+    )
+    if err == nil {
+        t.Fatal("decorate with no error")
     }
-    time.Sleep(2 * time.Second)
+    fmt.Println(err)
+    err = reg.Register(
+        "Game",
+        "Zone1001",
+        3,
+        "127.0.0.1:8003",
+        WithVersion(""),
+    )
+    if err == nil {
+        t.Fatal("decorate with no error")
+    }
+    fmt.Println(err)
 }

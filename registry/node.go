@@ -55,7 +55,7 @@ func (node *Node) key() string {
 func (node *Node) decorate(opts ...fnOptionNode) error {
 	for n, fnOpt := range opts {
 		if fnOpt == nil {
-			return fmt.Errorf("err: decrator node, nil option no.%v", n + 1)
+			return fmt.Errorf("err: decorate node, nil option no.%v", n + 1)
 		}
 		err := fnOpt(node)
 		if err != nil {
