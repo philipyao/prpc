@@ -27,6 +27,9 @@ type Registry struct {
     c cache
 
     listener Listener
+    svcWatcher ServiceWatcher
+    nodeWatchers []NodeWatcher
+
     exit chan struct{}
     wg sync.WaitGroup
 }
@@ -127,6 +130,13 @@ func (r *Registry) Close() {
         return
     default:
     }
+    fmt.Println("registry Close()")
+    if r.svcWatcher != nil {
+        r.svcWatcher.Stop()
+    }
+    for _, w := range r.nodeWatchers {
+        w.Stop()
+    }
     r.rt.Close()    //todo 是不是rt断了，所有watch循环就会返回错误？从而结束？
     close(r.exit)   //通知所有goroutine停止运行
     r.wg.Wait()     //等所有的goroutine结束
@@ -138,12 +148,14 @@ func (r *Registry) watchService(service, group string) {
     defer r.wg.Done()
 
     watcher := r.rt.WatchService(makeServiceKey(service, group))
+    r.svcWatcher = watcher
     var event *ServiceEvent
-
-    //todo 这里怎么停止？
 
     for {
         event = watcher.Accept()
+        if event == nil {
+            break
+        }
         if event.Err != nil {
             fmt.Printf("Accept error: %v, break\n", event.Err)
             break
@@ -158,6 +170,7 @@ func (r *Registry) watchService(service, group string) {
             err = node.decode([]byte(v))
             if err != nil {
                 //todo
+                fmt.Printf("decode add node<%v %v> err: %v\n", k, v, err)
                 continue
             }
             adds[k] = node
@@ -165,7 +178,9 @@ func (r *Registry) watchService(service, group string) {
             r.wg.Add(1)
             go r.watchNode(k)
         }
-        r.listener.OnServiceChange(adds, event.Dels)
+        if len(adds) > 0 || len(event.Dels) > 0 {
+            r.listener.OnServiceChange(adds, event.Dels)
+        }
     }
 }
 
@@ -173,15 +188,17 @@ func (r *Registry) watchNode(nodePath string) {
     defer r.wg.Done()
 
     w := r.rt.WatchNode(nodePath)
+    r.nodeWatchers = append(r.nodeWatchers, w)
     var (
         err error
         nev *NodeEvent
     )
 
-    //todo 这里怎么停止？
-
     for {
         nev = w.Accept()
+        if nev == nil {
+            break
+        }
         if nev.Err != nil {
             fmt.Printf("watch node error: %v, break\n", nev.Err)
             break

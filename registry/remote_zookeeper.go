@@ -16,6 +16,10 @@ type ServiceWatcherZK struct {
 }
 func (swzk *ServiceWatcherZK) Accept() *ServiceEvent {
     zkev := <- swzk.events
+    if zkev == nil {
+        fmt.Println("service events closed!")
+        return nil
+    }
     return &ServiceEvent{
         Err: zkev.Err,
         Adds: zkev.Adds,
@@ -37,6 +41,10 @@ type NodeWatcherZK struct {
 }
 func (nwzk *NodeWatcherZK) Accept() *NodeEvent {
     zkev := <- nwzk.events
+    if zkev == nil {
+        fmt.Println("node events closed!")
+        return nil
+    }
     return &NodeEvent{
         Err: zkev.Err,
         Path: zkev.Path,

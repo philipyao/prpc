@@ -189,6 +189,8 @@ func TestSubscribe(t *testing.T) {
     fmt.Printf("subscribe, nodes: %+v\n", nodes)
 
     wg.Wait()
+
+    fmt.Println("provider goroutine exit")
     reg.Close()
 }
 
