@@ -70,7 +70,17 @@ func (sc *svcClient) Subscribe() error {
 }
 func (sc *svcClient) Call(serviceMethod string, args interface{}, reply interface{}) error {
 	//todo 过滤机制
-	ep := sc.selector(sc.endPoints)
+	var eps []*endPoint
+	for _, v := range sc.endPoints {
+		if sc.version != noSpecifiedVersion && sc.version != v.version {
+			continue
+		}
+		eps = append(eps, v)
+	}
+	if len(eps) == 0 {
+		return errors.New("no available rpc servers")
+	}
+	ep := sc.selector(eps)
 	if ep == nil {
 		//todo
 		return errors.New("no available rpc servers")

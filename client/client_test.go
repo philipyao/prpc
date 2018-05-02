@@ -7,26 +7,53 @@ import (
     //"fmt"
 )
 
-func TestClientCallRPC(t *testing.T) {
+func TestCallRPCVersion(t *testing.T) {
     config := &registry.RegConfigZooKeeper{ZKAddr: "localhost:2181"}
     client := New(config)
     if client == nil {
         t.Fatal("error new client")
     }
 
-    svc := client.Service("Arith", "zone1001")
-    if svc == nil {
-        t.Fatal("error find rpc client")
-    }
     var args Args
     args.A = 2
     args.B = 3
     var reply int
-    err := svc.Call("Multiply", &args, &reply)
+
+    var err error
+
+    //default version
+    svc := client.Service("Arith", "zone1001")
+    if svc == nil {
+        t.Fatal("error find rpc client")
+    }
+    err = svc.Call("Multiply", &args, &reply)
     if err != nil {
         t.Fatalf("error call %v", err)
     }
-    t.Logf("reply: %v", reply)
+    svc2 := client.Service("Arith", "zone1001", WithVersion("v1.1"))
+    if svc2 == nil {
+        t.Fatal("error find rpc client")
+    }
+    err = svc2.Call("Multiply", &args, &reply)
+    if err != nil {
+        t.Fatalf("error call %v", err)
+    }
+    svc3 := client.Service("Arith", "zone1001", WithVersionAll())
+    if svc3 == nil {
+        t.Fatal("error find rpc client")
+    }
+    err = svc3.Call("Multiply", &args, &reply)
+    if err != nil {
+        t.Fatalf("error call %v", err)
+    }
+    svc4 := client.Service("Arith", "zone1001", WithVersion("unknown"))
+    if svc4 == nil {
+        t.Fatal("error find rpc client")
+    }
+    err = svc4.Call("Multiply", &args, &reply)
+    if err != nil {
+        t.Fatalf("error call %v", err)
+    }
 }
 
 func TestGetService(t *testing.T) {
