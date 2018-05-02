@@ -103,6 +103,7 @@ func (r *Registry) Subscribe(service, group string, listener Listener) ([]*Node,
     }
     for k, v := range nodeMap {
         node := new(Node)
+        node.Path = k
         err := node.decode(v)
         if err != nil {
             fmt.Printf("decode node err: %v, %v\n", err, string(v))
@@ -167,6 +168,7 @@ func (r *Registry) watchService(service, group string) {
         )
         for k, v := range event.Adds {
             node = new(Node)
+            node.Path = k
             err = node.decode([]byte(v))
             if err != nil {
                 //todo
@@ -208,6 +210,7 @@ func (r *Registry) watchNode(nodePath string) {
             break
         }
         tnode := new(Node)
+        tnode.Path = nev.Path
         err = tnode.decode([]byte(nev.Value))
         if err != nil {
             //todo

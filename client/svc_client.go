@@ -6,6 +6,9 @@ import (
 	"errors"
 	"github.com/philipyao/prpc/codec"
 	"log"
+	"encoding/binary"
+	"bytes"
+	"crypto/sha256"
 )
 
 const (
@@ -14,6 +17,8 @@ const (
 )
 
 type endPoint struct{
+	key 		string
+
 	index 		int
 	weight		int
 	version		string
@@ -51,7 +56,18 @@ type svcClient struct {
 
 	registry *registry.Registry
 }
-
+func (sc *svcClient) Subscribe() error {
+	//获取endpoints, watch endpoints的变化
+	nodes, err := sc.registry.Subscribe(sc.service, sc.group, sc)
+	if err != nil {
+		fmt.Printf("suscribe err: %v\n", err)
+		return nil
+	}
+	if len(nodes) > 0 {
+		sc.addEndpoint(nodes)
+	}
+	return nil
+}
 func (sc *svcClient) Call(serviceMethod string, args interface{}, reply interface{}) error {
 	//todo 过滤机制
 	ep := sc.selector(sc.endPoints)
@@ -107,6 +123,73 @@ func (sc *svcClient) decorate(opts ...fnOptionService) error {
 	return nil
 }
 
+func (sc *svcClient) addEndpoint(nodes []*registry.Node) {
+	for _, node := range nodes {
+		ep := &endPoint{
+			key: node.Path,
+			index: node.ID.Index,
+			weight: node.Weight,
+			version: node.Version,
+			styp: codec.SerializeType(node.Styp),
+			addr: node.Addr,
+		}
+		rpc := newRPC(ep)
+		if rpc == nil {
+			continue
+		}
+		ep.conn = rpc
+		sc.endPoints = append(sc.endPoints, ep)
+		fmt.Printf("add endpoint: %+v, total %v\n", ep, len(sc.endPoints))
+	}
+}
+
+func (sc *svcClient) delEndpoint(dels []string) {
+	for _, del := range dels {
+		for i, ep := range sc.endPoints {
+			if del == ep.key {
+				sc.endPoints = append(sc.endPoints[:i], sc.endPoints[i+1:]...)
+				fmt.Printf("delete endpoint %+v, total %v\n", ep, len(sc.endPoints))
+				break
+			}
+		}
+	}
+}
+
+func (sc *svcClient) updateEndpoint(node *registry.Node) {
+	for _, ep := range sc.endPoints {
+		if ep.key == node.Path {
+			//关心的数据确实发生变化
+			if !ep.equalTo(node) {
+				fmt.Printf("update endpoint<%+v> by node<%+v>\n", ep, node)
+				ep.update(node)
+			}
+			return
+		}
+	}
+	fmt.Printf("node<%+v> update, found no corresponding endpoin\n", node)
+}
+
+func (sc *svcClient) hashCode() (string, error) {
+	var err error
+	endian := binary.LittleEndian
+	buf := new(bytes.Buffer)
+	for _, v := range []interface{}{int32(sc.index), int32(sc.selectType)} {
+		err = binary.Write(buf, endian, v)
+		if err != nil {
+			fmt.Println("binary.Write failed:", err)
+			return "", err
+		}
+	}
+	for _, v := range []string{sc.service, sc.group, sc.version} {
+		buf.Write([]byte(v))
+	}
+	hash := sha256.New()
+	hash.Write(buf.Bytes())
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", hash.Sum(nil)), nil
+}
 //===========================================================
 
 func newSvcClient(service, group string, reg *registry.Registry, opts ...fnOptionService) *svcClient {
@@ -132,13 +215,9 @@ func newSvcClient(service, group string, reg *registry.Registry, opts ...fnOptio
 	slt, err := createSelector(cs)
 	if err != nil {
 		//handle err
+		fmt.Printf("createSelector err: %v\n", err)
 		return nil
 	}
 	sc.selector = slt
-
-	//todo 获取endpoints, watch endpoints的变化
-	//nodes, err := reg.Subscribe(service, group, sc)
-	//提前把version过滤一遍
-
 	return sc
 }

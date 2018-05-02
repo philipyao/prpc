@@ -51,15 +51,10 @@ type RPCClient struct {
 }
 
 func newRPC(ep *endPoint) *RPCClient {
-    styp := codec.SerializeType(ep.styp)
+    styp := ep.styp
     serializer := codec.GetSerializer(styp)
     if serializer == nil {
         log.Printf("styp %v not support", styp)
-        return nil
-    }
-    weight := ep.weight
-    if weight == 0 {
-        log.Printf("0 weight: %v", weight)
         return nil
     }
     addr := strings.TrimSpace(ep.addr)

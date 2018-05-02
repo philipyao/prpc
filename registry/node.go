@@ -38,6 +38,7 @@ type NodeOption struct {
 
 // service node定义
 type Node struct {
+	Path 		string
 	ID
 	Addr        string      `json:"addr"` //ip:port
 

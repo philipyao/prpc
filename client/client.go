@@ -11,7 +11,7 @@ type Client struct {
     registry *registry.Registry
     mu sync.Mutex //protect following
 
-    //group.service -> svcClient
+    //id -> svcClient
     services map[string]*svcClient
 
     //todo middleware
@@ -31,19 +31,31 @@ func New(regConfig interface{}) *Client {
 
     c := new(Client)
     //todo
+    c.services = make(map[string]*svcClient)
+    c.registry = reg
     return c
 }
 
 func (c *Client) Service(service, group string, opts ...fnOptionService) *svcClient {
-    //GetOption可以指定index/version等
-    //todo 如果clientmap里没有，则应该是新的svcClient
-    //则尝试新建svcClient
-    //如果成功，则加入缓存
+    svc := newSvcClient(service, group, c.registry, opts...)
+    id, err := svc.hashCode()
+    if err != nil {
+        fmt.Printf("system error: %v\n", err)
+        return nil
+    }
+    sc, exist := c.services[id]
+    if exist {
+        fmt.Printf("return existed service: id<%v>, sc<%#v>\n", id, sc)
+        return sc
+    }
 
-    //新建svcClient的时候，从registry里获取所有endpoints，结合选择策略，生成selector必报
+    err = svc.Subscribe()
+    if err != nil {
+        fmt.Printf("subscribe new service err: %v, sc %#v\n", err, svc)
+        return nil
+    }
 
-    id := fmt.Sprintf("%v.%v", group, service)
-    //todo id这里不行，要唯一，每次调用Service的id是否一致，要算所有参数的hash
-    //如果hash一致才算同一个svcClient，否则即使group和service一样，都不是一个svcClient
-    return c.services[id]
+    fmt.Printf("new service: id<%v>, sc<%#v>\n", id, svc)
+    c.services[id] = svc
+    return svc
 }

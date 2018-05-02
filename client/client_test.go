@@ -4,7 +4,7 @@ import (
     //"time"
     "testing"
     "github.com/philipyao/prpc/registry"
-    "fmt"
+    //"fmt"
 )
 
 //func TestCreateClient(t *testing.T) {
@@ -38,30 +38,53 @@ import (
 //    t.Logf("reply: %v", reply)
 //}
 
-func TestClientSelect(t *testing.T) {
+//func TestClientSelect(t *testing.T) {
+//    config := &registry.RegConfigZooKeeper{ZKAddr: "localhost:2181"}
+//    client := New(config)
+//    if client == nil {
+//        t.Fatal("error new client")
+//    }
+//
+//    status := make(map[int]int)
+//    for i := 0; i < 1000; i++ {
+//        rpcCli := client.Select("zone1001.gamesvr")
+//        if rpcCli == nil {
+//            t.Fatal("error find rpc client")
+//        }
+//        if _, exist := status[rpcCli.svc.ID.Index]; !exist {
+//            status[rpcCli.svc.ID.Index] = 0
+//        }
+//        status[rpcCli.svc.ID.Index]++
+//    }
+//    for index, count := range status {
+//        fmt.Printf("index: %v, count %v\n", index, count)
+//    }
+//
+//    rpcCli2 := client.Select("invalid_group")
+//    if rpcCli2 != nil {
+//        t.Fatal("error find rpc client")
+//    }
+//}
+
+func TestGetService(t *testing.T) {
     config := &registry.RegConfigZooKeeper{ZKAddr: "localhost:2181"}
     client := New(config)
     if client == nil {
         t.Fatal("error new client")
     }
 
-    status := make(map[int]int)
-    for i := 0; i < 1000; i++ {
-        rpcCli := client.Select("zone1001.gamesvr")
-        if rpcCli == nil {
-            t.Fatal("error find rpc client")
-        }
-        if _, exist := status[rpcCli.svc.ID.Index]; !exist {
-            status[rpcCli.svc.ID.Index] = 0
-        }
-        status[rpcCli.svc.ID.Index]++
+    svc := client.Service("Game", "zone1001")
+    svc2 := client.Service("Rank", "world1000", WithIndex(1))
+    if svc == svc2 {
+        t.Fatal("service be considered the same")
     }
-    for index, count := range status {
-        fmt.Printf("index: %v, count %v\n", index, count)
+    svc3 := client.Service("Rank", "world1000", WithIndex(1))
+    if svc2 != svc3 {
+        t.Fatal("service be considered different")
     }
-
-    rpcCli2 := client.Select("invalid_group")
-    if rpcCli2 != nil {
-        t.Fatal("error find rpc client")
+    svc4 := client.Service("Game", "zone1002", WithVersion("v1.1"), WithSelectType(SelectTypeRandom))
+    svc5 := client.Service("Game", "zone1002", WithVersion("v1.1"), WithSelectType(SelectTypeRandom))
+    if svc4 != svc5 {
+        t.Fatal("service be considered different")
     }
 }
