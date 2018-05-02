@@ -30,7 +30,8 @@ var (
     index = flag.Int("i", 1, "server index")
     ip = flag.String("I", "localhost", "server listening ip")
     port = flag.Int("p", 0, "server listening port")
-    weight = flag.Int("w", registry.DefaultServiceWeight, "server weight")
+    weight = flag.Int("w", 10, "server weight")
+    version = flag.String("v", "v1.0", "server version")
 )
 
 func main() {
@@ -55,6 +56,9 @@ func main() {
     }
     if *weight >= 0 {
         srv.SetWeight(*weight)
+    }
+    if *version != "" {
+        srv.SetVersion(*version)
     }
     err := srv.Handle(new(Arith), "Arith")
     if err != nil {

@@ -80,14 +80,14 @@ func (sc *svcClient) Call(serviceMethod string, args interface{}, reply interfac
 	retry := 3
 	var err error
 	for retry > 0 {
-		//err = ep.rpcClient.Call(serviceMethod, args, reply)
+		smethod := fmt.Sprintf("%v.%v", sc.service, serviceMethod)
+		err = ep.conn.Call(smethod, args, reply)
 		if err == nil {
 			break
 		}
 		retry--
 	}
-
-	return nil
+	return err
 }
 
 func (sc *svcClient) setVersion(v string) {

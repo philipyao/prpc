@@ -85,6 +85,7 @@ type Server struct {
     addr    string      //ip:port
 
     weight  int
+    version string
     styp codec.SerializeType
     serializer codec.Serializer
 
@@ -124,6 +125,7 @@ func New(group string, index int, addr string) *Server {
     }
 }
 
+//设置权重
 func (s *Server) SetWeight(weight int) error {
     if weight < 0 {
         return errors.New("invalid weight")
@@ -135,6 +137,11 @@ func (s *Server) SetWeight(weight int) error {
 //设置打解包方法，默认msgpack
 func (s *Server) SetCodec(tp int) error {
     //todo
+    return nil
+}
+
+func (s *Server) SetVersion(version string) error {
+    s.version = version
     return nil
 }
 
@@ -156,14 +163,22 @@ func (s *Server) Serve(wg *sync.WaitGroup, regConfig interface{}) {
     }
     s.registry = reg
 
-    builder := new(registry.OptionBuilder).SetWeight(s.weight).SetStyp(int(s.styp))
-    opt := builder.Build()
-    err := reg.Register("", registry.SvcID{Group: s.group, Index: s.index}, s.addr, opt)
-    if err != nil {
-        //todo
-        panic(fmt.Sprintf("register error: %v", err))
+    var err error
+    for sname := range s.serviceMap {
+        err = reg.Register(
+            sname,
+            s.group,
+            s.index,
+            s.addr,
+            registry.WithWeight(s.weight),
+            registry.WithVersion(s.version),
+            registry.WithSerialize(s.styp),
+        )
+        if err != nil {
+            panic(fmt.Sprintf("register %v err %v", sname, err))
+        }
+        fmt.Printf("register %v ok\n", sname)
     }
-
     s.doServe(wg)
 }
 
