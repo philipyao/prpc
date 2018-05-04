@@ -5,7 +5,7 @@ import (
     "io"
     "errors"
     "encoding/binary"
-    "encoding/hex"
+    //"encoding/hex"
 
     "github.com/philipyao/toolbox/util"
     "github.com/philipyao/prpc/codec"
@@ -147,11 +147,11 @@ func (m *Message) Pack(serviceMethod string, v interface{}, s codec.Serializer) 
     if err != nil {
         return nil, err
     }
-    fmt.Printf("body len: %v\n", len(body))
+    //fmt.Printf("body len: %v\n", len(body))
     if len(body) > DataCompressLen {
         m.setCompressed()
         body = util.Compress(body)
-        fmt.Printf("pack after compress: body len %v\n", len(body))
+        //fmt.Printf("pack after compress: body len %v\n", len(body))
     }
     hlen := len(m.head)
     dlen := hlen + len(body)
@@ -170,7 +170,7 @@ func (m *Message) unpackHead() error {
     if err != nil {
         return err
     }
-    fmt.Printf("unpackHead: %s\n", hex.EncodeToString(m.head[:]))
+    //fmt.Printf("unpackHead: %s\n", hex.EncodeToString(m.head[:]))
     if m.magic() != magicNumber {
         return ErrMagic
     }
@@ -178,7 +178,7 @@ func (m *Message) unpackHead() error {
         return ErrVersion
     }
     length := m.length()
-    fmt.Printf("length: %d, hlen %v\n", length, len(m.head))
+    //fmt.Printf("length: %d, hlen %v\n", length, len(m.head))
     if length <= len(m.head) {
         return ErrInvLength
     }
@@ -199,10 +199,10 @@ func (m *Message) read() error {
     if err != nil {
         return err
     }
-    fmt.Printf("unpack: body len %v\n", lenBody)
+    //fmt.Printf("unpack: body len %v\n", lenBody)
     if m.isCompressed() {
         m.data = util.Decompress(m.data)
-        fmt.Printf("unpack after decompress: body len %v\n", len(m.data))
+        //fmt.Printf("unpack after decompress: body len %v\n", len(m.data))
     }
     return nil
 }

@@ -147,7 +147,7 @@ func (rc *RPCClient) send(call *Call) {
         }
         return
     }
-    log.Printf("pack ok, data len %v", len(data))
+    //log.Printf("pack ok, data len %v", len(data))
     rc.conn.Write(data)
 }
 

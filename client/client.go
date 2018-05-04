@@ -9,10 +9,9 @@ import (
 
 type Client struct {
     registry *registry.Registry
-    mu sync.Mutex //protect following
 
-    //id -> svcClient
-    services map[string]*svcClient
+    mu sync.Mutex //protect following
+    services map[string]*svcClient      //id -> svcClient
 
     //todo middleware
 }
@@ -30,7 +29,6 @@ func New(regConfig interface{}) *Client {
     }
 
     c := new(Client)
-    //todo
     c.services = make(map[string]*svcClient)
     c.registry = reg
     return c
@@ -43,18 +41,20 @@ func (c *Client) Service(service, group string, opts ...fnOptionService) *svcCli
         fmt.Printf("system error: %v\n", err)
         return nil
     }
+    c.mu.Lock()
+    defer c.mu.Unlock()
     sc, exist := c.services[id]
     if exist {
         fmt.Printf("return existed service: id<%v>, sc<%#v>\n", id, sc)
         return sc
     }
 
+    //prepare to create new service
     err = svc.Subscribe()
     if err != nil {
         fmt.Printf("subscribe new service err: %v, sc %#v\n", err, svc)
         return nil
     }
-
     fmt.Printf("new service: id<%v>, sc<%#v>\n", id, svc)
     c.services[id] = svc
     return svc

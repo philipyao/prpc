@@ -26,7 +26,7 @@ type endPoint struct{
 	addr 		string
 	conn 		*RPCClient
 
-	//calltimes
+	callTimes 	uint32
 	//failtimes
 }
 //检查注册中心的数据发生变化后，可变数据(可在线更新的)是否发生改变
@@ -112,6 +112,7 @@ func (sc *svcClient) Call(serviceMethod string, args interface{}, reply interfac
 	retry := 3
 	var err error
 	for retry > 0 {
+		ep.callTimes++
 		smethod := fmt.Sprintf("%v.%v", sc.service, serviceMethod)
 		err = ep.conn.Call(smethod, args, reply)
 		if err == nil {
@@ -221,6 +222,13 @@ func (sc *svcClient) hashCode() (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf("%x", hash.Sum(nil)), nil
+}
+
+func (sc *svcClient) dumpMetrics() {
+	fmt.Println("******* dumpMetrics *******")
+	for _, ep := range sc.endPoints {
+		fmt.Printf("endpoint: index<%v> weight<%v> callTimes<%v>\n", ep.index, ep.weight, ep.callTimes)
+	}
 }
 //===========================================================
 

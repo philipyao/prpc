@@ -1,10 +1,8 @@
 package client
 
 import (
-    //"time"
     "testing"
     "github.com/philipyao/prpc/registry"
-    //"fmt"
 	"fmt"
 )
 
@@ -22,7 +20,7 @@ func TestCallRPCVersion(t *testing.T) {
 
     var err error
 
-    //default version
+    //match default version(v1.0)
     svc := client.Service("Arith", "zone1001")
     if svc == nil {
         t.Fatal("error find rpc client")
@@ -31,6 +29,7 @@ func TestCallRPCVersion(t *testing.T) {
     if err != nil {
         t.Fatalf("error call %v", err)
     }
+	//match version v1.1
     svc2 := client.Service("Arith", "zone1001", WithVersion("v1.1"))
     if svc2 == nil {
         t.Fatal("error find rpc client")
@@ -39,6 +38,7 @@ func TestCallRPCVersion(t *testing.T) {
     if err != nil {
         t.Fatalf("error call %v", err)
     }
+	//match all version
     svc3 := client.Service("Arith", "zone1001", WithVersionAll())
     if svc3 == nil {
         t.Fatal("error find rpc client")
@@ -47,6 +47,7 @@ func TestCallRPCVersion(t *testing.T) {
     if err != nil {
         t.Fatalf("error call %v", err)
     }
+	//match invalid version
     svc4 := client.Service("Arith", "zone1001", WithVersion("unknown"))
     if svc4 == nil {
         t.Fatal("error find rpc client")
@@ -113,3 +114,30 @@ func TestGetService(t *testing.T) {
         t.Fatal("service be considered different")
     }
 }
+
+func TestSelect(t *testing.T) {
+	config := &registry.RegConfigZooKeeper{ZKAddr: "localhost:2181"}
+	client := New(config)
+	if client == nil {
+		t.Fatal("error new client")
+	}
+
+	var args Args
+	args.A = 2
+	args.B = 3
+	var reply int
+
+	var err error
+	for _, st := range []selectType{SelectTypeRandom, SelectTypeRoundRobin, SelectTypeWeightedRandom} {
+		svc := client.Service("Arith", "zone1001", WithSelectType(st))
+		for i := 0; i < 100; i++ {
+			err = svc.Call("Multiply", &args, &reply)
+			if err != nil {
+				t.Fatalf("error call %v", err)
+			}
+		}
+		svc.dumpMetrics()
+	}
+}
+
+
