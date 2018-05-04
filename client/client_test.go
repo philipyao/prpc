@@ -5,6 +5,7 @@ import (
     "testing"
     "github.com/philipyao/prpc/registry"
     //"fmt"
+	"fmt"
 )
 
 func TestCallRPCVersion(t *testing.T) {
@@ -54,6 +55,40 @@ func TestCallRPCVersion(t *testing.T) {
     if err != nil {
         t.Fatalf("error call %v", err)
     }
+}
+
+func TestCallRPCIndex(t *testing.T) {
+	config := &registry.RegConfigZooKeeper{ZKAddr: "localhost:2181"}
+	client := New(config)
+	if client == nil {
+		t.Fatal("error new client")
+	}
+
+	var args Args
+	args.A = 2
+	args.B = 3
+	var reply int
+
+	var err error
+
+	//normal index
+	svc := client.Service("Arith", "zone1001", WithIndex(1))
+	if svc == nil {
+		t.Fatal("error find rpc client")
+	}
+	err = svc.Call("Multiply", &args, &reply)
+	if err != nil {
+		t.Fatalf("error call %v", err)
+	}
+	//invalid index
+	svc2 := client.Service("Arith", "zone1001", WithIndex(1000))
+	if svc2 == nil {
+		t.Fatal("error find rpc client")
+	}
+	err = svc2.Call("Multiply", &args, &reply)
+	if err != nil {
+		fmt.Println("error call ", err)
+	}
 }
 
 func TestGetService(t *testing.T) {

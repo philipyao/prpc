@@ -70,17 +70,39 @@ func (sc *svcClient) Subscribe() error {
 }
 func (sc *svcClient) Call(serviceMethod string, args interface{}, reply interface{}) error {
 	//todo 过滤机制
-	var eps []*endPoint
-	for _, v := range sc.endPoints {
-		if sc.version != noSpecifiedVersion && sc.version != v.version {
-			continue
+
+	var ep *endPoint
+	if sc.index >= 0 {
+		//指定固定的index
+		for _, e := range sc.endPoints {
+			if e.index == sc.index {
+				ep = e
+				break
+			}
 		}
-		eps = append(eps, v)
+		if ep == nil {
+			return fmt.Errorf("specified index %v not exist", sc.index)
+		}
+	} else {
+		//selector选取算法来选择节点
+		var eps []*endPoint
+
+		//1）如果指定了版本，先根据版本过滤可用的节点
+		if sc.version != noSpecifiedVersion {
+			for _, v := range sc.endPoints {
+				if sc.version != v.version {
+					continue
+				}
+				eps = append(eps, v)
+			}
+		} else {
+			eps = sc.endPoints
+		}
+		//2)selector选取节点
+		if len(eps) > 0 {
+			ep = sc.selector(eps)
+		}
 	}
-	if len(eps) == 0 {
-		return errors.New("no available rpc servers")
-	}
-	ep := sc.selector(eps)
 	if ep == nil {
 		//todo
 		return errors.New("no available rpc servers")
