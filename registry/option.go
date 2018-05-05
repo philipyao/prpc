@@ -6,11 +6,12 @@ import (
 )
 
 const (
-	maxWeight		= 10000
+	maxWeight = 10000
 )
 
 //服务注册修饰项
 type fnOptionNode func(node *Node) error
+
 func WithWeight(weight int) fnOptionNode {
 	if weight < 0 || weight > maxWeight {
 		log.Println("invalid weight value")

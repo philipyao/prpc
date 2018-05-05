@@ -9,9 +9,10 @@ import (
 
 //节点id
 type ID struct {
-	Group 		string			`json:"group"`
-	Index       int             `json:"index"`
+	Group string `json:"group"`
+	Index int    `json:"index"`
 }
+
 func (id *ID) Dump() string {
 	return fmt.Sprintf("%v.%v", id.Group, id.Index)
 }
@@ -31,19 +32,20 @@ func (id *ID) Load(s string) error {
 
 // service可选配置项
 type NodeOption struct {
-	Weight      int         `json:"weight"` //权重, 默认10
-	Styp        int         `json:"styp"`   //序列化, 默认messagepack
-	Version 	string 		`json:"version"`//灰度版本，默认为空
+	Weight  int    `json:"weight"`  //权重, 默认10
+	Styp    int    `json:"styp"`    //序列化, 默认messagepack
+	Version string `json:"version"` //灰度版本，默认为空
 }
 
 // service node定义
 type Node struct {
-	Path 		string
+	Path string
 	ID
-	Addr        string      `json:"addr"` //ip:port
+	Addr string `json:"addr"` //ip:port
 
 	*NodeOption
 }
+
 func (node *Node) encode() ([]byte, error) {
 	return json.Marshal(node)
 }
@@ -56,7 +58,7 @@ func (node *Node) key() string {
 func (node *Node) decorate(opts ...fnOptionNode) error {
 	for n, fnOpt := range opts {
 		if fnOpt == nil {
-			return fmt.Errorf("err: decorate node, nil option no.%v", n + 1)
+			return fmt.Errorf("err: decorate node, nil option no.%v", n+1)
 		}
 		err := fnOpt(node)
 		if err != nil {
@@ -65,4 +67,3 @@ func (node *Node) decorate(opts ...fnOptionNode) error {
 	}
 	return nil
 }
-

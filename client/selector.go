@@ -1,10 +1,10 @@
 package client
 
 import (
+	"errors"
+	"fmt"
 	"math/rand"
 	"time"
-	"fmt"
-	"errors"
 )
 
 type selector func(endPoints []*endPoint) *endPoint
@@ -51,7 +51,7 @@ func selectRoundRobin(config configSelect) (selector, error) {
 		if len(endPoints) == 0 {
 			return nil
 		}
-		ep := endPoints[i % len(endPoints)]
+		ep := endPoints[i%len(endPoints)]
 		i++
 		return ep
 	}, nil
@@ -69,23 +69,24 @@ func selectSpecified(config configSelect) (selector, error) {
 	}, nil
 }
 
-type selectType	int
+type selectType int
+
 const (
-	SelectTypeRandom  selectType 	= iota
+	SelectTypeRandom selectType = iota
 	SelectTypeWeightedRandom
 	SelectTypeRoundRobin
 	SelectTypeSpecified
 )
 
-var selectors = []struct{
-	typ selectType
+var selectors = []struct {
+	typ  selectType
 	desc string
-	fn fnSelect
-} {
-	{ SelectTypeRandom, "SelectTypeRandom", selectRandom },
-	{ SelectTypeWeightedRandom, "SelectTypeWeightedRandom", selectWeightedRandom },
-	{ SelectTypeRoundRobin, "SelectTypeRoundRobin", selectRoundRobin },
-	{ SelectTypeSpecified, "SelectTypeSpecified", selectSpecified },
+	fn   fnSelect
+}{
+	{SelectTypeRandom, "SelectTypeRandom", selectRandom},
+	{SelectTypeWeightedRandom, "SelectTypeWeightedRandom", selectWeightedRandom},
+	{SelectTypeRoundRobin, "SelectTypeRoundRobin", selectRoundRobin},
+	{SelectTypeSpecified, "SelectTypeSpecified", selectSpecified},
 }
 
 func createSelector(config configSelect) (selector, error) {
@@ -95,4 +96,3 @@ func createSelector(config configSelect) (selector, error) {
 	}
 	return selectors[config.typ].fn(config)
 }
-

@@ -1,11 +1,11 @@
 package registry
 
 import (
-    "time"
-    "testing"
-    //"github.com/philipyao/prpc/codec"
-    "fmt"
-    "sync"
+	"testing"
+	"time"
+	//"github.com/philipyao/prpc/codec"
+	"fmt"
+	"sync"
 )
 
 //func TestRegister(t *testing.T) {
@@ -144,60 +144,61 @@ import (
 //}
 
 func TestSubscribe(t *testing.T) {
-    reg := New("localhost:2181")
-    if reg == nil {
-        t.Fatal("new registry error")
-    }
+	reg := New("localhost:2181")
+	if reg == nil {
+		t.Fatal("new registry error")
+	}
 
-    var err error
+	var err error
 
-    var wg sync.WaitGroup
-    wg.Add(1)
-    go func() {
-        defer wg.Done()
-        reg2 := New("localhost:2181")
-        if reg2 == nil {
-            t.Fatal("new registry error")
-        }
-        err = reg2.Register(
-            "Example",
-            "ForSubscribe",
-            1,
-            "127.0.0.1:8001",
-        )
-        if err != nil {
-            t.Fatal("register with error")
-        }
-        time.Sleep(2 * time.Second)
-        err = reg2.Register(
-            "Example",
-            "ForSubscribe",
-            2,
-            "127.0.0.1:8002",
-        )
-        if err != nil {
-            t.Fatal("register with error")
-        }
-        time.Sleep(1 * time.Second)
-    }()
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		reg2 := New("localhost:2181")
+		if reg2 == nil {
+			t.Fatal("new registry error")
+		}
+		err = reg2.Register(
+			"Example",
+			"ForSubscribe",
+			1,
+			"127.0.0.1:8001",
+		)
+		if err != nil {
+			t.Fatal("register with error")
+		}
+		time.Sleep(2 * time.Second)
+		err = reg2.Register(
+			"Example",
+			"ForSubscribe",
+			2,
+			"127.0.0.1:8002",
+		)
+		if err != nil {
+			t.Fatal("register with error")
+		}
+		time.Sleep(1 * time.Second)
+	}()
 
-    time.Sleep(1 * time.Second)
-    nodes, err := reg.Subscribe("Example", "ForSubscribe", new(tmpListener))
-    if err != nil {
-        t.Fatal(err)
-    }
-    fmt.Printf("subscribe, nodes: %+v\n", nodes)
+	time.Sleep(1 * time.Second)
+	nodes, err := reg.Subscribe("Example", "ForSubscribe", new(tmpListener))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Printf("subscribe, nodes: %+v\n", nodes)
 
-    wg.Wait()
+	wg.Wait()
 
-    fmt.Println("provider goroutine exit")
-    reg.Close()
+	fmt.Println("provider goroutine exit")
+	reg.Close()
 }
 
-type tmpListener struct {}
+type tmpListener struct{}
+
 func (tl *tmpListener) OnServiceChange(adds map[string]*Node, dels []string) {
-    fmt.Printf("OnServiceChange: adds %+v, dels %+v\n", adds, dels)
+	fmt.Printf("OnServiceChange: adds %+v, dels %+v\n", adds, dels)
 }
 func (tl *tmpListener) OnNodeChange(path string, node *Node) {
-    fmt.Printf("OnNodeChange: path %v, node %+v\n", path, node)
+	fmt.Printf("OnNodeChange: path %v, node %+v\n", path, node)
 }

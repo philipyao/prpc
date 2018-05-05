@@ -1,41 +1,43 @@
 package client
 
 import (
-	"github.com/philipyao/prpc/registry"
-	"fmt"
-	"errors"
-	"github.com/philipyao/prpc/codec"
-	"log"
-	"encoding/binary"
 	"bytes"
 	"crypto/sha256"
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"github.com/philipyao/prpc/codec"
+	"github.com/philipyao/prpc/registry"
+	"log"
 )
 
 const (
-	noSpecifiedVersion		= ""
-	noSpecifiedIndex		= -1
+	noSpecifiedVersion = ""
+	noSpecifiedIndex   = -1
 )
 
-type endPoint struct{
-	key 		string
+type endPoint struct {
+	key string
 
-	index 		int
-	weight		int
-	version		string
-	styp 		codec.SerializeType
-	addr 		string
-	conn 		*RPCClient
+	index   int
+	weight  int
+	version string
+	styp    codec.SerializeType
+	addr    string
+	conn    *RPCClient
 
-	callTimes 	uint32
+	callTimes uint32
 	//failtimes
 }
+
 //检查注册中心的数据发生变化后，可变数据(可在线更新的)是否发生改变
 //不检查不可变数据，如index，addr等
 //如果服务提供方的styp addr要修改，肯定会停掉服务，修改然后重新注册的，不会走到这里
 func (ep *endPoint) equalTo(node *registry.Node) bool {
 	return ep.weight == node.Weight &&
-			ep.version == node.Version
+		ep.version == node.Version
 }
+
 //更新可变数据(可在线更新的)
 func (ep *endPoint) update(node *registry.Node) {
 	ep.weight = node.Weight
@@ -43,19 +45,20 @@ func (ep *endPoint) update(node *registry.Node) {
 }
 
 type svcClient struct {
-	group		string
-	service 	string
+	group   string
+	service string
 
 	//options
-	version 	string		//选择特定版本
-	index 		int			//选择特定index的endpoint
-	selectType  selectType	//选取算法
+	version    string     //选择特定版本
+	index      int        //选择特定index的endpoint
+	selectType selectType //选取算法
 
-	selector selector		//选择器
+	selector  selector //选择器
 	endPoints []*endPoint
 
 	registry *registry.Registry
 }
+
 func (sc *svcClient) Subscribe() error {
 	//获取endpoints, watch endpoints的变化
 	nodes, err := sc.registry.Subscribe(sc.service, sc.group, sc)
@@ -146,7 +149,7 @@ func (sc *svcClient) setSelectType(styp selectType) error {
 func (sc *svcClient) decorate(opts ...fnOptionService) error {
 	for n, fnOpt := range opts {
 		if fnOpt == nil {
-			return fmt.Errorf("err: decrator service client, nil option no.%v", n + 1)
+			return fmt.Errorf("err: decrator service client, nil option no.%v", n+1)
 		}
 		err := fnOpt(sc)
 		if err != nil {
@@ -159,12 +162,12 @@ func (sc *svcClient) decorate(opts ...fnOptionService) error {
 func (sc *svcClient) addEndpoint(nodes []*registry.Node) {
 	for _, node := range nodes {
 		ep := &endPoint{
-			key: node.Path,
-			index: node.ID.Index,
-			weight: node.Weight,
+			key:     node.Path,
+			index:   node.ID.Index,
+			weight:  node.Weight,
 			version: node.Version,
-			styp: codec.SerializeType(node.Styp),
-			addr: node.Addr,
+			styp:    codec.SerializeType(node.Styp),
+			addr:    node.Addr,
 		}
 		rpc := newRPC(ep)
 		if rpc == nil {
@@ -230,16 +233,17 @@ func (sc *svcClient) dumpMetrics() {
 		fmt.Printf("endpoint: index<%v> weight<%v> callTimes<%v>\n", ep.index, ep.weight, ep.callTimes)
 	}
 }
+
 //===========================================================
 
 func newSvcClient(service, group string, reg *registry.Registry, opts ...fnOptionService) *svcClient {
 	sc := &svcClient{
-		group: group,
-		service: service,
-		registry: reg,
-		version: registry.DefaultVersion,		//默认匹配缺省版本
-		index: noSpecifiedIndex,				//默认不指定index
-		selectType: SelectTypeWeightedRandom,   //默认按照权重随机获得endpoint
+		group:      group,
+		service:    service,
+		registry:   reg,
+		version:    registry.DefaultVersion,  //默认匹配缺省版本
+		index:      noSpecifiedIndex,         //默认不指定index
+		selectType: SelectTypeWeightedRandom, //默认按照权重随机获得endpoint
 	}
 	//修饰svcClient
 	err := sc.decorate(opts...)
@@ -249,7 +253,7 @@ func newSvcClient(service, group string, reg *registry.Registry, opts ...fnOptio
 	}
 	//设置selector
 	cs := configSelect{
-		typ: sc.selectType,
+		typ:   sc.selectType,
 		index: sc.index,
 	}
 	slt, err := createSelector(cs)

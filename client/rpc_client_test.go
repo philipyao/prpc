@@ -1,13 +1,13 @@
 package client
 
 import (
-    //"testing"
-    //"github.com/philipyao/prpc/registry"
-    //"github.com/philipyao/prpc/codec"
+//"testing"
+//"github.com/philipyao/prpc/registry"
+//"github.com/philipyao/prpc/codec"
 )
 
 type Args struct {
-    A, B int
+	A, B int
 }
 
 //func TestCallRPC(t *testing.T) {

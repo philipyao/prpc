@@ -1,8 +1,8 @@
 package client
 
 import (
-	"log"
 	"github.com/philipyao/prpc/registry"
+	"log"
 	//"path/filepath"
 )
 

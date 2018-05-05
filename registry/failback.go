@@ -1,6 +1,6 @@
 package registry
 
-type failback struct {}
+type failback struct{}
 
 func (fb *failback) retry() {
 
