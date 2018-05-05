@@ -7,7 +7,7 @@ import (
 )
 
 type Args struct {
-	A, B int
+    A, B int
 }
 
 //func TestCallRPC(t *testing.T) {

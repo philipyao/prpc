@@ -1,170 +1,170 @@
 package registry
 
 import (
-	"fmt"
-	"github.com/philipyao/toolbox/zkcli"
-	"sync"
+    "fmt"
+    "github.com/philipyao/toolbox/zkcli"
+    "sync"
 )
 
 const (
-	defaultZKRootPath = "/__PRPC__"
+    defaultZKRootPath = "/__PRPC__"
 )
 
 type ServiceWatcherZK struct {
-	exit   chan struct{}
-	events chan *zkcli.EventDataChild
+    exit   chan struct{}
+    events chan *zkcli.EventDataChild
 }
 
 func (swzk *ServiceWatcherZK) Accept() *ServiceEvent {
-	zkev := <-swzk.events
-	if zkev == nil {
-		fmt.Println("service events closed!")
-		return nil
-	}
-	return &ServiceEvent{
-		Err:  zkev.Err,
-		Adds: zkev.Adds,
-		Dels: zkev.Dels,
-	}
+    zkev := <-swzk.events
+    if zkev == nil {
+        fmt.Println("service events closed!")
+        return nil
+    }
+    return &ServiceEvent{
+        Err:  zkev.Err,
+        Adds: zkev.Adds,
+        Dels: zkev.Dels,
+    }
 }
 func (swzk *ServiceWatcherZK) Stop() {
-	select {
-	case <-swzk.exit: //防止重复关闭channel
-		return
-	default:
-	}
-	close(swzk.exit)
+    select {
+    case <-swzk.exit: //防止重复关闭channel
+        return
+    default:
+    }
+    close(swzk.exit)
 }
 
 type NodeWatcherZK struct {
-	exit   chan struct{}
-	events chan *zkcli.EventDataNode
+    exit   chan struct{}
+    events chan *zkcli.EventDataNode
 }
 
 func (nwzk *NodeWatcherZK) Accept() *NodeEvent {
-	zkev := <-nwzk.events
-	if zkev == nil {
-		fmt.Println("node events closed!")
-		return nil
-	}
-	return &NodeEvent{
-		Err:   zkev.Err,
-		Path:  zkev.Path,
-		Value: zkev.Value,
-	}
+    zkev := <-nwzk.events
+    if zkev == nil {
+        fmt.Println("node events closed!")
+        return nil
+    }
+    return &NodeEvent{
+        Err:   zkev.Err,
+        Path:  zkev.Path,
+        Value: zkev.Value,
+    }
 }
 func (nwzk *NodeWatcherZK) Stop() {
-	select {
-	case <-nwzk.exit: //防止重复关闭channel
-		return
-	default:
-	}
-	close(nwzk.exit)
+    select {
+    case <-nwzk.exit: //防止重复关闭channel
+        return
+    default:
+    }
+    close(nwzk.exit)
 }
 
 type remoteZooKeeper struct {
-	zkAddr string
-	client *zkcli.Conn
+    zkAddr string
+    client *zkcli.Conn
 
-	once sync.Once
+    once sync.Once
 }
 
 func newRemoteZooKeeper(zkAddr string) remote {
-	return &remoteZooKeeper{
-		zkAddr: zkAddr,
-	}
+    return &remoteZooKeeper{
+        zkAddr: zkAddr,
+    }
 }
 
 func (rz *remoteZooKeeper) Connect() error {
-	client, err := zkcli.Connect(rz.zkAddr)
-	if err != nil {
-		//todo重试
-		return err
-	}
-	//todo 重连
-	rz.client = client
-	return nil
+    client, err := zkcli.Connect(rz.zkAddr)
+    if err != nil {
+        //todo重试
+        return err
+    }
+    //todo 重连
+    rz.client = client
+    return nil
 }
 
 func (rz *remoteZooKeeper) CreateServiceNode(service, key string, data []byte) error {
-	var err error
-	servicePath := makePath(defaultZKRootPath, service)
-	err = rz.client.MakeDirP(servicePath)
-	if err != nil {
-		return err
-	}
+    var err error
+    servicePath := makePath(defaultZKRootPath, service)
+    err = rz.client.MakeDirP(servicePath)
+    if err != nil {
+        return err
+    }
 
-	nodePath := makePath(servicePath, key)
-	//判断key是否存在
-	exist, err := rz.client.Exists(nodePath)
-	if err != nil {
-		return err
-	}
-	if exist {
-		return fmt.Errorf("node already exist: path<%v>", nodePath)
-	}
+    nodePath := makePath(servicePath, key)
+    //判断key是否存在
+    exist, err := rz.client.Exists(nodePath)
+    if err != nil {
+        return err
+    }
+    if exist {
+        return fmt.Errorf("node already exist: path<%v>", nodePath)
+    }
 
-	err = rz.client.CreateEphemeral(nodePath, []byte(data))
-	if err != nil {
-		return err
-	}
-	return nil
+    err = rz.client.CreateEphemeral(nodePath, []byte(data))
+    if err != nil {
+        return err
+    }
+    return nil
 }
 
 func (rz *remoteZooKeeper) ListServiceNode(service string) (map[string][]byte, error) {
-	//如果service目录不存在，则创建
-	servicePath := makePath(defaultZKRootPath, service)
-	err := rz.client.MakeDirP(servicePath)
-	if err != nil {
-		return nil, err
-	}
-	return rz.client.GetChildren(servicePath)
+    //如果service目录不存在，则创建
+    servicePath := makePath(defaultZKRootPath, service)
+    err := rz.client.MakeDirP(servicePath)
+    if err != nil {
+        return nil, err
+    }
+    return rz.client.GetChildren(servicePath)
 }
 
 func (rz *remoteZooKeeper) WatchService(service string) ServiceWatcher {
-	watcher := &ServiceWatcherZK{
-		exit:   make(chan struct{}),
-		events: make(chan *zkcli.EventDataChild, 10),
-	}
+    watcher := &ServiceWatcherZK{
+        exit:   make(chan struct{}),
+        events: make(chan *zkcli.EventDataChild, 10),
+    }
 
-	//如果service目录不存在，则创建
-	servicePath := makePath(defaultZKRootPath, service)
-	err := rz.client.MakeDirP(servicePath)
-	if err != nil {
-		go func() {
-			watcher.events <- &zkcli.EventDataChild{Err: fmt.Errorf("MakeDirP error: %v, %v", service, err)}
-		}()
-		return watcher
-	}
-	rz.client.WatchDir(servicePath, watcher.events, watcher.exit)
-	return watcher
+    //如果service目录不存在，则创建
+    servicePath := makePath(defaultZKRootPath, service)
+    err := rz.client.MakeDirP(servicePath)
+    if err != nil {
+        go func() {
+            watcher.events <- &zkcli.EventDataChild{Err: fmt.Errorf("MakeDirP error: %v, %v", service, err)}
+        }()
+        return watcher
+    }
+    rz.client.WatchDir(servicePath, watcher.events, watcher.exit)
+    return watcher
 }
 
 func (rz *remoteZooKeeper) WatchNode(nodePath string) NodeWatcher {
-	watcher := &NodeWatcherZK{
-		exit:   make(chan struct{}),
-		events: make(chan *zkcli.EventDataNode, 10),
-	}
+    watcher := &NodeWatcherZK{
+        exit:   make(chan struct{}),
+        events: make(chan *zkcli.EventDataNode, 10),
+    }
 
-	rz.client.WatchNode(nodePath, watcher.events, watcher.exit)
-	return watcher
+    rz.client.WatchNode(nodePath, watcher.events, watcher.exit)
+    return watcher
 }
 
 func (rz *remoteZooKeeper) Close() {
-	rz.once.Do(func() {
-		rz.client.Close()
-		rz.client = nil
-	})
+    rz.once.Do(func() {
+        rz.client.Close()
+        rz.client = nil
+    })
 }
 
 /////////////////////////////////////////////////////////
 func makePath(prefix string, entries ...string) string {
-	path := prefix
-	for _, entry := range entries {
-		if entry == "" {
-			continue
-		}
-		path += "/" + entry
-	}
-	return path
+    path := prefix
+    for _, entry := range entries {
+        if entry == "" {
+            continue
+        }
+        path += "/" + entry
+    }
+    return path
 }

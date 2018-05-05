@@ -7,8 +7,9 @@ import (
 )
 
 type SerializeType byte
+
 const (
-    SerializeTypeNone       SerializeType    = iota
+    SerializeTypeNone SerializeType = iota
     SerializeTypeMsgpack
     SerializeTypeJson
 )
@@ -16,7 +17,7 @@ const (
 var (
     serializers = map[SerializeType]Serializer{
         SerializeTypeMsgpack: &msgpackSerializer{},
-        SerializeTypeJson: &jsonSerializer{},
+        SerializeTypeJson:    &jsonSerializer{},
     }
 )
 
@@ -25,7 +26,8 @@ type Serializer interface {
     Decode(data []byte, v interface{}) error
 }
 
-type jsonSerializer struct {}
+type jsonSerializer struct{}
+
 func (js jsonSerializer) Encode(v interface{}) ([]byte, error) {
     return json.Marshal(v)
 }
@@ -33,7 +35,8 @@ func (js jsonSerializer) Decode(data []byte, v interface{}) error {
     return json.Unmarshal(data, v)
 }
 
-type msgpackSerializer struct {}
+type msgpackSerializer struct{}
+
 func (ms msgpackSerializer) Encode(v interface{}) ([]byte, error) {
     var buf bytes.Buffer
     enc := msgpack.NewEncoder(&buf)

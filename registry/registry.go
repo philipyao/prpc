@@ -2,230 +2,230 @@
 package registry
 
 import (
-	"errors"
-	"fmt"
-	"github.com/philipyao/prpc/codec"
-	"path/filepath"
-	"sync"
+    "errors"
+    "fmt"
+    "github.com/philipyao/prpc/codec"
+    "path/filepath"
+    "sync"
 )
 
 const (
-	DefaultGroup   = "default"
-	DefaultVersion = "v1.0"
+    DefaultGroup   = "default"
+    DefaultVersion = "v1.0"
 
-	defaultNodeWeight = 10
+    defaultNodeWeight = 10
 )
 
 type Listener interface {
-	OnServiceChange(map[string]*Node, []string)
-	OnNodeChange(string, *Node)
+    OnServiceChange(map[string]*Node, []string)
+    OnNodeChange(string, *Node)
 }
 
 type Registry struct {
-	rt remote
-	fb failback
-	c  cache
+    rt remote
+    fb failback
+    c  cache
 
-	listener     Listener
-	svcWatcher   ServiceWatcher
-	nodeWatchers []NodeWatcher
+    listener     Listener
+    svcWatcher   ServiceWatcher
+    nodeWatchers []NodeWatcher
 
-	exit chan struct{}
-	wg   sync.WaitGroup
+    exit chan struct{}
+    wg   sync.WaitGroup
 }
 
 func New(zkAddr string) *Registry {
-	r := &Registry{
-		rt:   newRemoteZooKeeper(zkAddr),
-		exit: make(chan struct{}),
-	}
-	err := r.rt.Connect()
-	if err != nil {
-		fmt.Printf("connect to remote error: %v\n", err)
-		return nil
-	}
-	return r
+    r := &Registry{
+        rt:   newRemoteZooKeeper(zkAddr),
+        exit: make(chan struct{}),
+    }
+    err := r.rt.Connect()
+    if err != nil {
+        fmt.Printf("connect to remote error: %v\n", err)
+        return nil
+    }
+    return r
 }
 
 //服务提供方（server）在注册中心注册服务节点
 func (r *Registry) Register(service, group string, index int, addr string, opts ...fnOptionNode) error {
-	//todo check args
-	node := &Node{
-		ID: ID{
-			Group: group,
-			Index: index,
-		},
-		Addr: addr,
-		NodeOption: &NodeOption{
-			Weight:  defaultNodeWeight,               //默认权重
-			Styp:    int(codec.SerializeTypeMsgpack), //默认序列化方法
-			Version: DefaultVersion,                  //缺省版本号
-		},
-	}
-	//修饰
-	err := node.decorate(opts...)
-	if err != nil {
-		return err
-	}
-	nodeData, err := node.encode()
-	if err != nil {
-		fmt.Printf("encode node<%+v> err %v\n", node, err)
-		return err
-	}
-	fmt.Printf("====== register service: %v, %v\n", node.key(), string(nodeData))
+    //todo check args
+    node := &Node{
+        ID: ID{
+            Group: group,
+            Index: index,
+        },
+        Addr: addr,
+        NodeOption: &NodeOption{
+            Weight:  defaultNodeWeight,               //默认权重
+            Styp:    int(codec.SerializeTypeMsgpack), //默认序列化方法
+            Version: DefaultVersion,                  //缺省版本号
+        },
+    }
+    //修饰
+    err := node.decorate(opts...)
+    if err != nil {
+        return err
+    }
+    nodeData, err := node.encode()
+    if err != nil {
+        fmt.Printf("encode node<%+v> err %v\n", node, err)
+        return err
+    }
+    fmt.Printf("====== register service: %v, %v\n", node.key(), string(nodeData))
 
-	//todo 检查cache是否存在，否则报错
+    //todo 检查cache是否存在，否则报错
 
-	err = r.rt.CreateServiceNode(makeServiceKey(service, group), node.key(), nodeData)
-	if err != nil {
-		fmt.Printf("remote create node<%+v> err %v\n", node, err)
-		return err
-	}
+    err = r.rt.CreateServiceNode(makeServiceKey(service, group), node.key(), nodeData)
+    if err != nil {
+        fmt.Printf("remote create node<%+v> err %v\n", node, err)
+        return err
+    }
 
-	//todo add node to cache
+    //todo add node to cache
 
-	return nil
+    return nil
 }
 
 //client来订阅特定service，如果服务节点有增删或者节点数据变化，会有通知；
 //返回所有节点，供客户端初始化
 func (r *Registry) Subscribe(service, group string, listener Listener) ([]*Node, error) {
-	//todo check args
-	if listener == nil {
-		return nil, errors.New("no listener specified")
-	}
-	r.listener = listener
+    //todo check args
+    if listener == nil {
+        return nil, errors.New("no listener specified")
+    }
+    r.listener = listener
 
-	var nodes []*Node
-	nodeMap, err := r.rt.ListServiceNode(makeServiceKey(service, group))
-	if err != nil {
-		return nil, err
-	}
-	for k, v := range nodeMap {
-		node := new(Node)
-		node.Path = k
-		err := node.decode(v)
-		if err != nil {
-			fmt.Printf("decode node err: %v, %v\n", err, string(v))
-			continue
-		}
-		if filepath.Base(k) != node.ID.Dump() {
-			fmt.Printf("node id mismatch: %v, %v\n", k, node.ID.Dump())
-			continue
-		}
-		nodes = append(nodes, node)
+    var nodes []*Node
+    nodeMap, err := r.rt.ListServiceNode(makeServiceKey(service, group))
+    if err != nil {
+        return nil, err
+    }
+    for k, v := range nodeMap {
+        node := new(Node)
+        node.Path = k
+        err := node.decode(v)
+        if err != nil {
+            fmt.Printf("decode node err: %v, %v\n", err, string(v))
+            continue
+        }
+        if filepath.Base(k) != node.ID.Dump() {
+            fmt.Printf("node id mismatch: %v, %v\n", k, node.ID.Dump())
+            continue
+        }
+        nodes = append(nodes, node)
 
-		r.wg.Add(1)
-		go r.watchNode(k)
-	}
+        r.wg.Add(1)
+        go r.watchNode(k)
+    }
 
-	r.wg.Add(1)
-	go r.watchService(service, group)
+    r.wg.Add(1)
+    go r.watchService(service, group)
 
-	return nodes, nil
+    return nodes, nil
 }
 
 func (r *Registry) Close() {
-	select {
-	case <-r.exit: //防止重复关闭channel
-		return
-	default:
-	}
-	fmt.Println("registry Close()")
-	if r.svcWatcher != nil {
-		r.svcWatcher.Stop()
-	}
-	for _, w := range r.nodeWatchers {
-		w.Stop()
-	}
-	r.rt.Close()  //todo 是不是rt断了，所有watch循环就会返回错误？从而结束？
-	close(r.exit) //通知所有goroutine停止运行
-	r.wg.Wait()   //等所有的goroutine结束
+    select {
+    case <-r.exit: //防止重复关闭channel
+        return
+    default:
+    }
+    fmt.Println("registry Close()")
+    if r.svcWatcher != nil {
+        r.svcWatcher.Stop()
+    }
+    for _, w := range r.nodeWatchers {
+        w.Stop()
+    }
+    r.rt.Close()  //todo 是不是rt断了，所有watch循环就会返回错误？从而结束？
+    close(r.exit) //通知所有goroutine停止运行
+    r.wg.Wait()   //等所有的goroutine结束
 }
 
 ///====================================================================
 
 func (r *Registry) watchService(service, group string) {
-	defer r.wg.Done()
+    defer r.wg.Done()
 
-	watcher := r.rt.WatchService(makeServiceKey(service, group))
-	r.svcWatcher = watcher
-	var event *ServiceEvent
+    watcher := r.rt.WatchService(makeServiceKey(service, group))
+    r.svcWatcher = watcher
+    var event *ServiceEvent
 
-	for {
-		event = watcher.Accept()
-		if event == nil {
-			break
-		}
-		if event.Err != nil {
-			fmt.Printf("Accept error: %v, break\n", event.Err)
-			break
-		}
-		adds := make(map[string]*Node)
-		var (
-			node *Node
-			err  error
-		)
-		for k, v := range event.Adds {
-			node = new(Node)
-			node.Path = k
-			err = node.decode([]byte(v))
-			if err != nil {
-				//todo
-				fmt.Printf("decode add node<%v %v> err: %v\n", k, v, err)
-				continue
-			}
-			adds[k] = node
+    for {
+        event = watcher.Accept()
+        if event == nil {
+            break
+        }
+        if event.Err != nil {
+            fmt.Printf("Accept error: %v, break\n", event.Err)
+            break
+        }
+        adds := make(map[string]*Node)
+        var (
+            node *Node
+            err  error
+        )
+        for k, v := range event.Adds {
+            node = new(Node)
+            node.Path = k
+            err = node.decode([]byte(v))
+            if err != nil {
+                //todo
+                fmt.Printf("decode add node<%v %v> err: %v\n", k, v, err)
+                continue
+            }
+            adds[k] = node
 
-			r.wg.Add(1)
-			go r.watchNode(k)
-		}
-		if len(adds) > 0 || len(event.Dels) > 0 {
-			r.listener.OnServiceChange(adds, event.Dels)
-		}
-	}
+            r.wg.Add(1)
+            go r.watchNode(k)
+        }
+        if len(adds) > 0 || len(event.Dels) > 0 {
+            r.listener.OnServiceChange(adds, event.Dels)
+        }
+    }
 }
 
 func (r *Registry) watchNode(nodePath string) {
-	defer r.wg.Done()
+    defer r.wg.Done()
 
-	w := r.rt.WatchNode(nodePath)
-	r.nodeWatchers = append(r.nodeWatchers, w)
-	var (
-		err error
-		nev *NodeEvent
-	)
+    w := r.rt.WatchNode(nodePath)
+    r.nodeWatchers = append(r.nodeWatchers, w)
+    var (
+        err error
+        nev *NodeEvent
+    )
 
-	for {
-		nev = w.Accept()
-		if nev == nil {
-			break
-		}
-		if nev.Err != nil {
-			fmt.Printf("watch node error: %v, break\n", nev.Err)
-			break
-		}
-		if nev.Path != nodePath {
-			fmt.Printf("node path mismatch: %v %+v, break\n", nodePath, nev)
-			break
-		}
-		tnode := new(Node)
-		tnode.Path = nev.Path
-		err = tnode.decode([]byte(nev.Value))
-		if err != nil {
-			//todo
-			fmt.Printf("decode node err: %v, %+v\n", nodePath, nev)
-			continue
-		}
-		if filepath.Base(nev.Path) != tnode.ID.Dump() {
-			//todo
-			fmt.Printf("node id mismatch: %+v %+v\n", nev, tnode)
-			break
-		}
-		r.listener.OnNodeChange(nev.Path, tnode)
-	}
+    for {
+        nev = w.Accept()
+        if nev == nil {
+            break
+        }
+        if nev.Err != nil {
+            fmt.Printf("watch node error: %v, break\n", nev.Err)
+            break
+        }
+        if nev.Path != nodePath {
+            fmt.Printf("node path mismatch: %v %+v, break\n", nodePath, nev)
+            break
+        }
+        tnode := new(Node)
+        tnode.Path = nev.Path
+        err = tnode.decode([]byte(nev.Value))
+        if err != nil {
+            //todo
+            fmt.Printf("decode node err: %v, %+v\n", nodePath, nev)
+            continue
+        }
+        if filepath.Base(nev.Path) != tnode.ID.Dump() {
+            //todo
+            fmt.Printf("node id mismatch: %+v %+v\n", nev, tnode)
+            break
+        }
+        r.listener.OnNodeChange(nev.Path, tnode)
+    }
 }
 
 func makeServiceKey(service, group string) string {
-	return fmt.Sprintf("%v@%v", service, group)
+    return fmt.Sprintf("%v@%v", service, group)
 }
