@@ -23,6 +23,10 @@ func selectRandom(config configSelect) (selector, error) {
     }, nil
 }
 
+//todo
+//func selectWeightedRoundrobin
+//https://github.com/phusion/nginx/commit/27e94984486058d73157038f7950a0a36ecc6e35
+
 func selectWeightedRandom(config configSelect) (selector, error) {
     return func(endPoints []*endPoint) *endPoint {
         total := 0
