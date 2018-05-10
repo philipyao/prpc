@@ -82,6 +82,8 @@ func (sc *svcClient) Call(serviceMethod string, args interface{}, reply interfac
     breakerName := fmt.Sprintf("%v-%v-%v", sc.group, sc.service, serviceMethod)
     if _, exist := sc.breakers[breakerName]; !exist {
         hystrix.ConfigureCommand(breakerName, hystrix.CommandConfig{
+            Timeout:                2000,       //函数执行2s超时
+            MaxConcurrentRequests:  500,        //QPS
             SleepWindow:            5000,       //5s
             RequestVolumeThreshold: 10,
             ErrorPercentThreshold:  20,         //20%
