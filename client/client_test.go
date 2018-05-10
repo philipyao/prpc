@@ -115,27 +115,27 @@ func TestGetService(t *testing.T) {
     }
 }
 
-func TestSelect(t *testing.T) {
-    config := &registry.RegConfigZooKeeper{ZKAddr: "localhost:2181"}
-    client := New(config)
-    if client == nil {
-        t.Fatal("error new client")
-    }
-
-    var args Args
-    args.A = 2
-    args.B = 3
-    var reply int
-
-    var err error
-    for _, st := range []selectType{SelectTypeRandom, SelectTypeRoundRobin, SelectTypeWeightedRandom} {
-        svc := client.Service("Arith", "zone1001", WithSelectType(st))
-        for i := 0; i < 100; i++ {
-            err = svc.Call("Multiply", &args, &reply)
-            if err != nil {
-                t.Fatalf("error call %v", err)
-            }
-        }
-        svc.dumpMetrics()
-    }
-}
+//func TestSelect(t *testing.T) {
+//    config := &registry.RegConfigZooKeeper{ZKAddr: "localhost:2181"}
+//    client := New(config)
+//    if client == nil {
+//        t.Fatal("error new client")
+//    }
+//
+//    var args Args
+//    args.A = 2
+//    args.B = 3
+//    var reply int
+//
+//    var err error
+//    for _, st := range []selectType{SelectTypeRandom, SelectTypeRoundRobin, SelectTypeWeightedRandom} {
+//        svc := client.Service("Arith", "zone1001", WithSelectType(st))
+//        for i := 0; i < 100; i++ {
+//            err = svc.Call("Multiply", &args, &reply)
+//            if err != nil {
+//                t.Fatalf("error call %v", err)
+//            }
+//        }
+//        svc.dumpMetrics()
+//    }
+//}

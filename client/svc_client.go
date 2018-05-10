@@ -8,6 +8,7 @@ import (
     "fmt"
     "github.com/philipyao/prpc/codec"
     "github.com/philipyao/prpc/registry"
+    "github.com/afex/hystrix-go/hystrix"
     "log"
 )
 
@@ -56,6 +57,9 @@ type svcClient struct {
     selector  selector //选择器
     endPoints []*endPoint
 
+    //断路器是否初始化: command -> isInit
+    breakers map[string]bool
+
     registry *registry.Registry
 }
 
@@ -74,6 +78,40 @@ func (sc *svcClient) Subscribe() error {
 func (sc *svcClient) Call(serviceMethod string, args interface{}, reply interface{}) error {
     //todo 过滤机制
 
+    //初始化熔断器
+    breakerName := fmt.Sprintf("%v-%v-%v", sc.group, sc.service, serviceMethod)
+    if _, exist := sc.breakers[breakerName]; !exist {
+        hystrix.ConfigureCommand(breakerName, hystrix.CommandConfig{
+            SleepWindow:            5000,       //5s
+            RequestVolumeThreshold: 10,
+            ErrorPercentThreshold:  20,         //20%
+        })
+        sc.breakers[breakerName] = true
+    }
+    // 加断路器来调用run函数：控制超时，错误熔断，提供过载保护
+    output := make(chan error, 1)
+    errors := hystrix.Go(breakerName, func() error {
+        output <- sc.doCall(serviceMethod, args, reply)
+        return nil
+    }, func(e error) error {
+        log.Printf("In fallback function for breaker %v, error: %v", breakerName, e.Error())
+        circuit, _, _ := hystrix.GetCircuit(breakerName)
+        log.Printf("Circuit state is: %v", circuit.IsOpen())
+        return e
+    })
+    // Response and error handling. If the call was successful, the output channel gets the response. Otherwise,
+    // the errors channel gives us the error.
+    // blocking wait here
+    select {
+    case out := <-output:
+        log.Printf("Call in breaker %v successful", breakerName)
+        return out
+    case err := <-errors:
+        return err
+    }
+}
+
+func (sc *svcClient) doCall(serviceMethod string, args interface{}, reply interface{}) error {
     var ep *endPoint
     if sc.index >= 0 {
         //指定固定的index
@@ -110,8 +148,7 @@ func (sc *svcClient) Call(serviceMethod string, args interface{}, reply interfac
         //todo
         return errors.New("no available rpc servers")
     }
-
-    //failover机制
+    //todo failover机制
     retry := 3
     var err error
     for retry > 0 {
@@ -244,6 +281,7 @@ func newSvcClient(service, group string, reg *registry.Registry, opts ...fnOptio
         version:    registry.DefaultVersion,  //默认匹配缺省版本
         index:      noSpecifiedIndex,         //默认不指定index
         selectType: SelectTypeWeightedRandom, //默认按照权重随机获得endpoint
+        breakers:   make(map[string]bool),
     }
     //修饰svcClient
     err := sc.decorate(opts...)
