@@ -28,6 +28,7 @@ type Registry struct {
 
     listener     Listener
     svcWatcher   ServiceWatcher
+    lock sync.Mutex       //protect nodeWatchers
     nodeWatchers []NodeWatcher
 
     exit chan struct{}
@@ -135,9 +136,11 @@ func (r *Registry) Close() {
     if r.svcWatcher != nil {
         r.svcWatcher.Stop()
     }
+    r.lock.Lock()
     for _, w := range r.nodeWatchers {
         w.Stop()
     }
+    r.lock.Unlock()
     r.rt.Close()  //todo 是不是rt断了，所有watch循环就会返回错误？从而结束？
     close(r.exit) //通知所有goroutine停止运行
     r.wg.Wait()   //等所有的goroutine结束
@@ -190,7 +193,10 @@ func (r *Registry) watchNode(nodePath string) {
     defer r.wg.Done()
 
     w := r.rt.WatchNode(nodePath)
+    r.lock.Lock()
     r.nodeWatchers = append(r.nodeWatchers, w)
+    r.lock.Unlock()
+
     var (
         err error
         nev *NodeEvent

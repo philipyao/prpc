@@ -8,6 +8,7 @@ import (
     "fmt"
     "github.com/philipyao/prpc/registry"
     "github.com/philipyao/prpc/server"
+    "time"
 )
 
 const (
@@ -23,6 +24,11 @@ type Arith int
 func (t *Arith) Multiply(args *Args, reply *int) error {
     *reply = args.A * args.B
     log.Printf("args %+v, reply %v\n", args, *reply)
+
+    if *index == 2 {
+        //simulate timeout
+        time.Sleep(3 * time.Second)
+    }
     return nil
 }
 

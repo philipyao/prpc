@@ -10,12 +10,17 @@ import (
     "github.com/philipyao/prpc/registry"
     "github.com/afex/hystrix-go/hystrix"
     "log"
+    "sync"
 )
 
 const (
     noSpecifiedVersion = ""
     noSpecifiedIndex   = -1
 )
+
+type Args struct {
+    A, B int
+}
 
 type endPoint struct {
     key string
@@ -27,6 +32,7 @@ type endPoint struct {
     addr    string
     conn    *RPCClient
 
+    lock sync.Mutex         //protect following
     callTimes uint32
     //failtimes
 }
@@ -58,7 +64,12 @@ type svcClient struct {
     endPoints []*endPoint
 
     //断路器是否初始化: command -> isInit
+    breakerLock sync.RWMutex
     breakers map[string]bool
+
+    statLock sync.Mutex
+    reqTimes uint64
+    succTimes uint64
 
     registry *registry.Registry
 }
@@ -77,19 +88,34 @@ func (sc *svcClient) Subscribe() error {
 }
 func (sc *svcClient) Call(serviceMethod string, args interface{}, reply interface{}) error {
     //todo 过滤机制
+    defer func() {
+       if r := recover(); r != nil {
+           fmt.Printf("recover: %v\n", r)
+       }
+    }()
+
+    sc.statLock.Lock()
+    sc.reqTimes++
+    sc.statLock.Unlock()
 
     //初始化熔断器
     breakerName := fmt.Sprintf("%v-%v-%v", sc.group, sc.service, serviceMethod)
-    if _, exist := sc.breakers[breakerName]; !exist {
+    sc.breakerLock.RLock()
+    _, exist := sc.breakers[breakerName];
+    sc.breakerLock.RUnlock()
+    if  !exist {
         hystrix.ConfigureCommand(breakerName, hystrix.CommandConfig{
             Timeout:                2000,       //函数执行2s超时
-            MaxConcurrentRequests:  500,        //QPS
+            MaxConcurrentRequests:  50000,        //QPS
             SleepWindow:            5000,       //5s
             RequestVolumeThreshold: 10,
             ErrorPercentThreshold:  20,         //20%
         })
+        sc.breakerLock.Lock()
         sc.breakers[breakerName] = true
+        sc.breakerLock.Unlock()
     }
+
     // 加断路器来调用run函数：控制超时，错误熔断，提供过载保护
     output := make(chan error, 1)
     errors := hystrix.Go(breakerName, func() error {
@@ -106,7 +132,10 @@ func (sc *svcClient) Call(serviceMethod string, args interface{}, reply interfac
     // blocking wait here
     select {
     case out := <-output:
-        log.Printf("Call in breaker %v successful", breakerName)
+        sc.statLock.Lock()
+        sc.succTimes++
+        sc.statLock.Unlock()
+        //log.Printf("Call in breaker %v successful", breakerName)
         return out
     case err := <-errors:
         return err
@@ -151,10 +180,12 @@ func (sc *svcClient) doCall(serviceMethod string, args interface{}, reply interf
         return errors.New("no available rpc servers")
     }
     //todo failover机制
-    retry := 3
+    retry := 1
     var err error
     for retry > 0 {
+        ep.lock.Lock()
         ep.callTimes++
+        ep.lock.Unlock()
         smethod := fmt.Sprintf("%v.%v", sc.service, serviceMethod)
         err = ep.conn.Call(smethod, args, reply)
         if err == nil {
@@ -268,8 +299,14 @@ func (sc *svcClient) hashCode() (string, error) {
 
 func (sc *svcClient) dumpMetrics() {
     fmt.Println("******* dumpMetrics *******")
+    sc.statLock.Lock()
+    fmt.Printf("reqTimes<%v> succTimes<%v>\n", sc.reqTimes, sc.succTimes)
+    sc.statLock.Unlock()
+
     for _, ep := range sc.endPoints {
+        ep.lock.Lock()
         fmt.Printf("endpoint: index<%v> weight<%v> callTimes<%v>\n", ep.index, ep.weight, ep.callTimes)
+        ep.lock.Unlock()
     }
 }
 

@@ -6,9 +6,6 @@ import (
 //"github.com/philipyao/prpc/codec"
 )
 
-type Args struct {
-    A, B int
-}
 
 //func TestCallRPC(t *testing.T) {
 //    svc := &registry.Service{

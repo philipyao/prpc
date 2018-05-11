@@ -172,8 +172,10 @@ func (rc *RPCClient) input() {
         //开始处理rpc返回
         seq := rmsg.Seqno()
         //rc.mutextex.Lock()
+        rc.mutex.Lock()
         call := rc.pending[seq]
         delete(rc.pending, seq)
+        rc.mutex.Unlock()
         //rc.mutextex.Unlock()
 
         switch {
@@ -219,10 +221,12 @@ func (rc *RPCClient) input() {
             err = io.ErrUnexpectedEOF
         }
     }
+    rc.mutex.Lock()
     for _, call := range rc.pending {
         call.Error = err
         call.done()
     }
+    rc.mutex.Unlock()
     //rc.mutextex.Unlock()
     //rc.reqMutex.Unlock()
     if err != io.EOF && !closing {
