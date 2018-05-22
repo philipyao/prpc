@@ -1,14 +1,42 @@
 package client
 
 import (
-    "fmt"
+    //"fmt"
     "github.com/philipyao/prpc/registry"
     "testing"
     //"time"
     "sync"
-    "os"
-    "runtime/pprof"
+    //"os"
+    //"runtime/pprof"
+    "time"
 )
+
+func TestGetService(t *testing.T) {
+    config := &registry.RegConfigZooKeeper{ZKAddr: "localhost:2181"}
+    client := New(config)
+    if client == nil {
+        t.Fatal("error new client")
+    }
+
+    svc := client.Service("Arith", "zone1001")
+    args := Args{
+        A: 2,
+        B: 3,
+    }
+    var reply int
+    err := svc.Call("Multiply", &args, &reply)
+    if err != nil {
+        t.Fatalf("error call %v", err)
+    }
+
+    var wg sync.WaitGroup
+    wg.Add(1)
+    go func() {
+        defer wg.Done()
+        time.Sleep(20 * time.Second)
+    }()
+    wg.Wait()
+}
 
 //func TestCallRPCVersion(t *testing.T) {
 //    config := &registry.RegConfigZooKeeper{ZKAddr: "localhost:2181"}
@@ -144,37 +172,37 @@ import (
 //    }
 //}
 
-func TestCircuitBreaker(t *testing.T) {
-    config := &registry.RegConfigZooKeeper{ZKAddr: "localhost:2181"}
-    client := New(config)
-    if client == nil {
-        t.Fatal("error new client")
-    }
-
-    svc := client.Service("Arith", "zone1001", WithIndex(1))
-    var wg sync.WaitGroup
-
-    f, err := os.Create("cpu.profile")
-    if err != nil {
-        t.Fatal(err)
-    }
-    pprof.StartCPUProfile(f)
-    defer pprof.StopCPUProfile()
-
-    for i := 0; i < 8000; i++ {
-        wg.Add(1)
-        go func() {
-            defer wg.Done()
-            var args Args
-            args.A = 2
-            args.B = 3
-            var reply int
-            err := svc.Call("Multiply", &args, &reply)
-            if err != nil {
-                fmt.Printf("error call %v\n", err)
-            }
-        }()
-    }
-    wg.Wait()
-    svc.dumpMetrics()
-}
+//func TestCircuitBreaker(t *testing.T) {
+//    config := &registry.RegConfigZooKeeper{ZKAddr: "localhost:2181"}
+//    client := New(config)
+//    if client == nil {
+//        t.Fatal("error new client")
+//    }
+//
+//    svc := client.Service("Arith", "zone1001", WithIndex(1))
+//    var wg sync.WaitGroup
+//
+//    f, err := os.Create("cpu.profile")
+//    if err != nil {
+//        t.Fatal(err)
+//    }
+//    pprof.StartCPUProfile(f)
+//    defer pprof.StopCPUProfile()
+//
+//    for i := 0; i < 3000; i++ {
+//        wg.Add(1)
+//        go func() {
+//            defer wg.Done()
+//            var args Args
+//            args.A = 2
+//            args.B = 3
+//            var reply int
+//            err := svc.Call("Multiply", &args, &reply)
+//            if err != nil {
+//                fmt.Printf("error call %v\n", err)
+//            }
+//        }()
+//    }
+//    wg.Wait()
+//    svc.dumpMetrics()
+//}

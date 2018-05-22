@@ -76,11 +76,11 @@ func main() {
     log.Println("begin to serve")
     wg.Add(1)
     go srv.Serve(&wg, &registry.RegConfigZooKeeper{ZKAddr: ZKAddr})
-    //go func(){
-    //   time.Sleep(50 * time.Second)
-    //
-    //    srv.Stop()
-    //}()
+    go func(){
+       time.Sleep(10 * time.Second)
+
+        srv.Stop()
+    }()
 
     wg.Wait()
     srv.Fini()

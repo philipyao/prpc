@@ -14,7 +14,8 @@ import (
 )
 
 var ErrShutdown = errors.New("connection is shut down")
-var ErrNetClosing = errors.New("use of closed network connection")
+var ErrBeClosed = errors.New("connection closed by peer")
+//var ErrNetClosing = errors.New("use of closed network connection")
 
 type CBFn func(a interface{}, r interface{}, e error)
 
@@ -155,11 +156,12 @@ func (rc *RPCClient) send(call *Call) {
 func (rc *RPCClient) input() {
     var err error
     //var response Response
+    var rmsg *message.Message
     for err == nil {
-        rmsg, err := message.NewResponse(rc.conn)
+        rmsg, err = message.NewResponse(rc.conn)
         if err != nil {
-            if err != ErrNetClosing {
-                log.Printf("NewResponse error: %v", err)
+            if /*err != ErrNetClosing &&*/ err != io.EOF {
+                log.Printf("read response msg error: %v", err)
             }
             break
         }
@@ -212,15 +214,20 @@ func (rc *RPCClient) input() {
     // Terminate pending calls.
     //rc.reqMutex.Lock()
     //rc.mutextex.Lock()
+
+    log.Printf("stop rpc_client input: err %v", err)
     rc.shutdown = true
     closing := rc.closing
     if err == io.EOF {
         if closing {
+            //主动关闭
             err = ErrShutdown
         } else {
-            err = io.ErrUnexpectedEOF
+            //对端关闭
+            err = ErrBeClosed
         }
     }
+    //log.Printf("stop rpc_client input: err %v", err)
     rc.mutex.Lock()
     for _, call := range rc.pending {
         call.Error = err
@@ -229,9 +236,9 @@ func (rc *RPCClient) input() {
     rc.mutex.Unlock()
     //rc.mutextex.Unlock()
     //rc.reqMutex.Unlock()
-    if err != io.EOF && !closing {
-        log.Println("rpc: client protocol error:", err)
-    }
+    //if err != io.EOF && !closing {
+    //    log.Println("rpc: client protocol error:", err)
+    //}
 }
 
 func (rc *RPCClient) heartbeat() {

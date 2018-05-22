@@ -188,6 +188,14 @@ func (s *Server) Stop() {
 
 func (s *Server) Fini() {
     log.Println("finilize srv...")
+    for sname := range s.serviceMap {
+        //注销服务
+        log.Printf("unregister service %v: %v.%v\n", sname, s.group, s.index)
+        err := s.registry.Unregister(sname, s.group, s.index)
+        if err != nil {
+            log.Printf("unregister err: %v\n", err)
+        }
+    }
     s.registry.Close()
     s.listener.Close()
 }

@@ -4,6 +4,7 @@ import (
     "fmt"
     "github.com/philipyao/toolbox/zkcli"
     "sync"
+    "log"
 )
 
 const (
@@ -108,7 +109,21 @@ func (rz *remoteZooKeeper) CreateServiceNode(service, key string, data []byte) e
     if err != nil {
         return err
     }
+    log.Printf("create service node %v ok\n", nodePath)
     return nil
+}
+
+func (rz *remoteZooKeeper) DeleteServiceNode(service, key string) error {
+    var err error
+    servicePath := makePath(defaultZKRootPath, service)
+    err = rz.client.MakeDirP(servicePath)
+    if err != nil {
+        return err
+    }
+
+    nodePath := makePath(servicePath, key)
+    log.Printf("delete service node %v\n", nodePath)
+    return rz.client.Delete(nodePath)
 }
 
 func (rz *remoteZooKeeper) ListServiceNode(service string) (map[string][]byte, error) {

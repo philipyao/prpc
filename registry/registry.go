@@ -88,6 +88,11 @@ func (r *Registry) Register(service, group string, index int, addr string, opts 
     return nil
 }
 
+//服务提供方（server）在注册中心注销服务节点
+func (r *Registry) Unregister(service, group string, index int) error {
+    return r.rt.DeleteServiceNode(makeServiceKey(service, group), fmt.Sprintf("%v.%v", group, index))
+}
+
 //client来订阅特定service，如果服务节点有增删或者节点数据变化，会有通知；
 //返回所有节点，供客户端初始化
 func (r *Registry) Subscribe(service, group string, listener Listener) ([]*Node, error) {
