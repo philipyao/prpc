@@ -11,6 +11,7 @@ import (
     "github.com/afex/hystrix-go/hystrix"
     "log"
     "sync"
+    "context"
 )
 
 const (
@@ -187,7 +188,7 @@ func (sc *svcClient) doCall(serviceMethod string, args interface{}, reply interf
         ep.callTimes++
         ep.lock.Unlock()
         smethod := fmt.Sprintf("%v.%v", sc.service, serviceMethod)
-        err = ep.conn.Call(smethod, args, reply)
+        err = ep.conn.Call(context.Background(), smethod, args, reply)
         if err == nil {
             break
         }
@@ -239,7 +240,7 @@ func (sc *svcClient) addEndpoint(nodes []*registry.Node) {
             styp:    codec.SerializeType(node.Styp),
             addr:    node.Addr,
         }
-        rpc := newRPC(ep)
+        rpc := newRPCClient(ep.addr, ep.styp)
         if rpc == nil {
             continue
         }

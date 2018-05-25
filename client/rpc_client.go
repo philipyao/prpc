@@ -12,6 +12,7 @@ import (
     "github.com/philipyao/prpc/codec"
     "github.com/philipyao/prpc/message"
     "bufio"
+    "context"
 )
 
 var ErrShutdown = errors.New("connection is shut down")
@@ -33,6 +34,7 @@ type Call struct {
     Error         error       // After completion, the error status.
     Done          chan *Call  // Strobes when call is complete.
     fn            FnCallback
+    Seq           uint16
 }
 
 func (call *Call) done() {
@@ -62,14 +64,13 @@ type RPCClient struct {
     //todo inservice 检测本rpc依赖的dependency是否ok
 }
 
-func newRPC(ep *endPoint) *RPCClient {
-    styp := ep.styp
+func newRPCClient(addr string, styp codec.SerializeType) *RPCClient {
     serializer := codec.GetSerializer(styp)
     if serializer == nil {
         log.Printf("styp %v not support", styp)
         return nil
     }
-    addr := strings.TrimSpace(ep.addr)
+    addr = strings.TrimSpace(addr)
     conn, err := net.Dial("tcp", addr)
     if err != nil {
         log.Printf("conn to rpc server<%v> error %v", addr, err)
@@ -93,20 +94,50 @@ func newRPC(ep *endPoint) *RPCClient {
 }
 
 //同步阻塞调用
-func (rc *RPCClient) Call(serviceMethod string, args interface{}, reply interface{}) error {
-    call := <-rc.doCall(serviceMethod, args, reply)
-    return call.Error
+func (rc *RPCClient) Call(ctx context.Context, serviceMethod string, args interface{}, reply interface{}) error {
+    rc.mutex.Lock()
+    rc.seq++
+    if rc.seq == 0 {
+        rc.seq = 1
+    }
+    seq := rc.seq
+    rc.mutex.Unlock()
+    done := rc.doCall(seq, serviceMethod, args, reply)
+    select {
+    case <- rc.shutdown:
+        return ErrShutdown
+    case <- ctx.Done():
+        rc.mutex.Lock()
+        delete(rc.pending, seq)
+        rc.mutex.Unlock()
+        return ctx.Err()
+    case call := <- done:
+        return call.Error
+    }
 }
 
 //异步非阻塞调用
-func (rc *RPCClient) Go(serviceMethod string, args interface{}, reply interface{}, fn FnCallback) {
-    done := rc.doCall(serviceMethod, args, reply)
+func (rc *RPCClient) Go(ctx context.Context, serviceMethod string, args interface{}, reply interface{}, fn FnCallback) {
+    rc.mutex.Lock()
+    rc.seq++
+    if rc.seq == 0 {
+        rc.seq = 1
+    }
+    seq := rc.seq
+    rc.mutex.Unlock()
+    done := rc.doCall(seq, serviceMethod, args, reply)
     rc.wg.Add(1)
     go func() {
         defer rc.wg.Done()
 
         select {
         case <- rc.shutdown:
+            return
+        case <- ctx.Done():             //cancelled by caller
+            rc.mutex.Lock()
+            delete(rc.pending, seq)
+            rc.mutex.Unlock()
+            fn(args, reply, ctx.Err())
             return
         case call := <- done:
             fn(call.Args, call.Reply, call.Error)
@@ -135,12 +166,13 @@ func (rc *RPCClient) Close() error {
 
 //==========================================================================
 
-func (rc *RPCClient) doCall(serviceMethod string, args interface{}, reply interface{}) chan *Call {
+func (rc *RPCClient) doCall(seq uint16, serviceMethod string, args interface{}, reply interface{}) chan *Call {
     call := new(Call)
     call.ServiceMethod = serviceMethod
     call.Args = args
     call.Reply = reply
     call.Done = make(chan *Call, 10)
+    call.Seq = seq
     rc.send(call)
 
     return call.Done
@@ -155,24 +187,21 @@ func (rc *RPCClient) send(call *Call) {
         call.done()
         return
     }
-    rc.seq++
-    if rc.seq == 0 {
-        rc.seq = 1
-    }
-    seq := rc.seq
-    rc.pending[seq] = call
+
+    //call.Seq = seq
+    rc.pending[call.Seq] = call
     rc.mutex.Unlock()
 
     // Encode and send the request.
     //todo msg pool
-    pkg := message.NewRequest(message.MsgKindDefault, seq)
+    pkg := message.NewRequest(message.MsgKindDefault, call.Seq)
     data, err := pkg.Pack(call.ServiceMethod, call.Args, rc.serializer)
     if err != nil {
         //todo
         log.Printf("pack error %v", err)
         rc.mutex.Lock()
-        call = rc.pending[seq]
-        delete(rc.pending, seq)
+        call = rc.pending[call.Seq]
+        delete(rc.pending, call.Seq)
         rc.mutex.Unlock()
         if call != nil {
             call.Error = err
@@ -187,8 +216,8 @@ func (rc *RPCClient) send(call *Call) {
     if err != nil {
         log.Printf("conn write error %v", err)
         rc.mutex.Lock()
-        call = rc.pending[seq]
-        delete(rc.pending, seq)
+        call = rc.pending[call.Seq]
+        delete(rc.pending, call.Seq)
         rc.mutex.Unlock()
         if call != nil {
             call.Error = err
