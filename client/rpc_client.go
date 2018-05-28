@@ -13,15 +13,18 @@ import (
     "github.com/philipyao/prpc/message"
     "bufio"
     "context"
+    "time"
 )
 
-var ErrShutdown = errors.New("connection is shut down")
+var ErrShutdown = errors.New("shut down")
 var ErrBeClosed = errors.New("connection closed by peer")
-//var ErrNetClosing = errors.New("use of closed network connection")
+var ErrNetClosing = errors.New("use of closed network connection")
 
 const (
-    BuffSizeReader      = 16 * 1024     //16K
-    BuffSizeWriter      = 16 * 1024     //16k
+    BuffSizeReader      = 64 * 1024     //64K
+    //BuffSizeWriter      = 64 * 1024     //64k
+
+    ReadTimeout         = 5 * time.Second
 )
 
 type FnCallback func(a interface{}, r interface{}, e error)
@@ -50,7 +53,7 @@ func (call *Call) done() {
 
 type RPCClient struct {
     conn       net.Conn
-    reader     *bufio.Reader
+    reader     *bufio.Reader    //带缓冲读取
     serializer codec.Serializer
 
     mutex    sync.Mutex // protects following
@@ -105,13 +108,16 @@ func (rc *RPCClient) Call(ctx context.Context, serviceMethod string, args interf
     done := rc.doCall(seq, serviceMethod, args, reply)
     select {
     case <- rc.shutdown:
+        log.Println("call encounter shutdown")
         return ErrShutdown
-    case <- ctx.Done():
+    case <- ctx.Done():     //cancelled by caller
         rc.mutex.Lock()
         delete(rc.pending, seq)
         rc.mutex.Unlock()
+        log.Printf("call canceled by context: %v", ctx.Err())
         return ctx.Err()
     case call := <- done:
+        log.Printf("call rsp: %v", call.Error)
         return call.Error
     }
 }
@@ -132,8 +138,10 @@ func (rc *RPCClient) Go(ctx context.Context, serviceMethod string, args interfac
 
         select {
         case <- rc.shutdown:
+            log.Println("Go encounter shutdown")
             return
         case <- ctx.Done():             //cancelled by caller
+            log.Println("Go() canceled by caller")
             rc.mutex.Lock()
             delete(rc.pending, seq)
             rc.mutex.Unlock()
@@ -156,10 +164,13 @@ func (rc *RPCClient) Close() error {
     rc.mutex.Unlock()
 
     close(rc.shutdown)
-    rc.wg.Wait()
-
     //关闭tcpconn
     rc.conn.Close()
+
+    log.Println("call shutdown, wait")
+    rc.wg.Wait()
+    log.Println("wait ok")
+
 
     return nil
 }
@@ -234,19 +245,31 @@ func (rc *RPCClient) input() {
     defer rc.wg.Done()
 
     var err error
-    //var response Response
     var rmsg *message.Message
     for err == nil {
         select {
         case <- rc.shutdown:
+            log.Println("input() encounter shutdown, return")
             return
         default:
         }
-        //todo read timeout SetReadDeadline
+        // read timeout SetReadDeadline
+        rc.conn.SetReadDeadline(time.Now().Add(ReadTimeout))
         rmsg, err = message.NewResponse(rc.reader)
         if err != nil {
-            if /*err != ErrNetClosing &&*/ err != io.EOF {
-                log.Printf("read response msg error: %v", err)
+            if err != io.EOF {
+                if strings.Contains(err.Error(), ErrNetClosing.Error()) {
+                    err = ErrShutdown
+                } else {
+                    if ne, ok := err.(net.Error); ok {
+                        if ne.Timeout() == true {
+                            log.Println("read timeout, continue")
+                            err = nil
+                            continue
+                        }
+                    }
+                    log.Printf("read response msg error: %v", err)
+                }
             }
             break
         }
@@ -283,7 +306,7 @@ func (rc *RPCClient) input() {
     }
 
     // Terminate pending calls.
-    log.Printf("stop rpc_client input(): err %v", err)
+    log.Printf("stop rpc_client input(): %v", err)
     rc.mutex.Lock()
     closing := rc.closing
     rc.mutex.Unlock()
@@ -309,6 +332,7 @@ func (rc *RPCClient) input() {
 }
 
 func (rc *RPCClient) heartbeat() {
-    //todo
     defer rc.wg.Done()
+
+    //todo
 }

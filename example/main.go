@@ -41,6 +41,10 @@ var (
     version = flag.String("v", "v1.0", "server version")
 )
 
+func init() {
+    log.SetFlags(log.LstdFlags | log.Lshortfile)
+}
+
 func main() {
     var wg sync.WaitGroup
 
@@ -58,8 +62,7 @@ func main() {
         addr,
     )
     if srv == nil {
-        log.Println("server.New error")
-        return
+        log.Fatal("server.New error, exit")
     }
     if *weight >= 0 {
         srv.SetWeight(*weight)
@@ -69,17 +72,15 @@ func main() {
     }
     err := srv.Handle(new(Arith), "Arith")
     if err != nil {
-        log.Printf("register error %v\n", err)
-        return
+        log.Fatalf("register error %v\n", err)
     }
 
-    log.Println("begin to serve")
     wg.Add(1)
     go srv.Serve(&wg, &registry.RegConfigZooKeeper{ZKAddr: ZKAddr})
     go func(){
-       time.Sleep(10 * time.Second)
-
-        srv.Stop()
+       //time.Sleep(10 * time.Second)
+       //
+       // srv.Stop()
     }()
 
     wg.Wait()

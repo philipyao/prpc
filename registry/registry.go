@@ -7,6 +7,7 @@ import (
     "github.com/philipyao/prpc/codec"
     "path/filepath"
     "sync"
+    "log"
 )
 
 const (
@@ -73,12 +74,26 @@ func (r *Registry) Register(service, group string, index int, addr string, opts 
         fmt.Printf("encode node<%+v> err %v\n", node, err)
         return err
     }
-    fmt.Printf("====== register service: %v, %v\n", node.key(), string(nodeData))
+    log.Printf("====== register service: %v, %v", node.key(), string(nodeData))
 
     //todo 检查cache是否存在，否则报错
 
+
     err = r.rt.CreateServiceNode(makeServiceKey(service, group), node.key(), nodeData)
     if err != nil {
+        if err == ErrRemoteNodeExist {
+            //可能进程异常退出，导致 remote 还缓存有节点信息（此时心跳尚未过期，否则节点会被删除）
+            data, terr := r.rt.GetServiceNode(makeServiceKey(service, group), node.key())
+            if terr == nil {
+                var preNode Node
+                terr = preNode.decode(data)
+                if terr == nil && node.Addr == preNode.Addr {
+                    log.Println("find node with the same addr already exist, clean it up")
+                    r.Unregister(service, group, index)
+                    return r.rt.CreateServiceNode(makeServiceKey(service, group), node.key(), nodeData)
+                }
+            }
+        }
         fmt.Printf("remote create node<%+v> err %v\n", node, err)
         return err
     }

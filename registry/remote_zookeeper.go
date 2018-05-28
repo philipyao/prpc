@@ -5,10 +5,15 @@ import (
     "github.com/philipyao/toolbox/zkcli"
     "sync"
     "log"
+    "errors"
 )
 
 const (
     defaultZKRootPath = "/__PRPC__"
+)
+
+var (
+    ErrRemoteNodeExist      = errors.New("node already exist")
 )
 
 type ServiceWatcherZK struct {
@@ -88,6 +93,7 @@ func (rz *remoteZooKeeper) Connect() error {
 }
 
 func (rz *remoteZooKeeper) CreateServiceNode(service, key string, data []byte) error {
+    log.Printf("CreateServiceNode service<%v> key<%v>\n", service, key)
     var err error
     servicePath := makePath(defaultZKRootPath, service)
     err = rz.client.MakeDirP(servicePath)
@@ -102,15 +108,26 @@ func (rz *remoteZooKeeper) CreateServiceNode(service, key string, data []byte) e
         return err
     }
     if exist {
-        return fmt.Errorf("node already exist: path<%v>", nodePath)
+        return ErrRemoteNodeExist
     }
-
     err = rz.client.CreateEphemeral(nodePath, []byte(data))
     if err != nil {
         return err
     }
     log.Printf("create service node %v ok\n", nodePath)
     return nil
+}
+
+func (rz *remoteZooKeeper) GetServiceNode(service, key string) ([]byte, error) {
+    var err error
+    servicePath := makePath(defaultZKRootPath, service)
+    err = rz.client.MakeDirP(servicePath)
+    if err != nil {
+        return nil, err
+    }
+
+    nodePath := makePath(servicePath, key)
+    return rz.client.Get(nodePath)
 }
 
 func (rz *remoteZooKeeper) DeleteServiceNode(service, key string) error {

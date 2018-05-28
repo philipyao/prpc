@@ -26,6 +26,9 @@ type remote interface {
     //创建服务节点
     CreateServiceNode(string, string, []byte) error
 
+    //获取节点
+    GetServiceNode(string, string) ([]byte, error)
+
     //注销服务节点
     DeleteServiceNode(string, string) error
 

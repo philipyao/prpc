@@ -162,6 +162,12 @@ func (s *Server) Serve(wg *sync.WaitGroup, regConfig interface{}) {
     }
     s.registry = reg
 
+    fmt.Println()
+    log.Println(">>============================================")
+    log.Println(">> rpc service start to serve")
+    log.Printf(">> ...[args] group: <%v>\n", s.group)
+    log.Printf(">> ...[args] index: <%v>\n", s.index)
+    log.Printf(">> ...[args] addr:  <%v>\n", s.addr)
     var err error
     for sname := range s.serviceMap {
         err = reg.Register(
@@ -176,7 +182,7 @@ func (s *Server) Serve(wg *sync.WaitGroup, regConfig interface{}) {
         if err != nil {
             panic(fmt.Sprintf("register %v err %v", sname, err))
         }
-        fmt.Printf("register %v ok\n", sname)
+        //log.Printf("register %v ok", sname)
     }
     s.doServe(wg)
 }
