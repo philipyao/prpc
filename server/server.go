@@ -117,6 +117,7 @@ func New(group string, index int, addr string) *Server {
         addr:       addr,
         weight:     DefaultSrvIndexWeight,
         styp:       DefaultMsgPack,
+        version:    registry.DefaultVersion,
         serializer: codec.GetSerializer(DefaultMsgPack),
         serviceMap: make(map[string]*service),
         listener:   l,
