@@ -79,7 +79,7 @@ func (sc *SvcClient) Subscribe() error {
     //获取endpoints, watch endpoints的变化
     nodes, err := sc.registry.Subscribe(sc.service, sc.group, sc)
     if err != nil {
-        fmt.Printf("suscribe err: %v\n", err)
+        log.Printf("[prpc][ERROR] suscribe err: %v", err)
         return nil
     }
     if len(nodes) > 0 {
@@ -91,7 +91,7 @@ func (sc *SvcClient) Call(serviceMethod string, args interface{}, reply interfac
     //todo 过滤机制
     defer func() {
        if r := recover(); r != nil {
-           fmt.Printf("recover: %v\n", r)
+           log.Printf("[prpc][ERROR] recover: %v\n", r)
        }
     }()
 
@@ -123,9 +123,9 @@ func (sc *SvcClient) Call(serviceMethod string, args interface{}, reply interfac
         output <- sc.doCall(serviceMethod, args, reply)
         return nil
     }, func(e error) error {
-        log.Printf("In fallback function for breaker %v, error: %v", breakerName, e.Error())
+        log.Printf("[prpc][ERROR] In fallback function for breaker %v, error: %v", breakerName, e.Error())
         circuit, _, _ := hystrix.GetCircuit(breakerName)
-        log.Printf("Circuit state is: %v", circuit.IsOpen())
+        log.Printf("[prpc][ERROR] Circuit state is: %v", circuit.IsOpen())
         return e
     })
     // Response and error handling. If the call was successful, the output channel gets the response. Otherwise,
@@ -246,7 +246,7 @@ func (sc *SvcClient) addEndpoint(nodes []*registry.Node) {
         }
         ep.conn = rpc
         sc.endPoints = append(sc.endPoints, ep)
-        fmt.Printf("add endpoint: %+v, total %v\n", ep, len(sc.endPoints))
+        log.Printf("[prpc] add endpoint: %+v, total %v\n", ep, len(sc.endPoints))
     }
 }
 
@@ -255,7 +255,7 @@ func (sc *SvcClient) delEndpoint(dels []string) {
         for i, ep := range sc.endPoints {
             if del == ep.key {
                 sc.endPoints = append(sc.endPoints[:i], sc.endPoints[i+1:]...)
-                fmt.Printf("delete endpoint %+v, total %v\n", ep, len(sc.endPoints))
+                log.Printf("[prpc] delete endpoint %+v, total %v\n", ep, len(sc.endPoints))
                 break
             }
         }
@@ -267,13 +267,13 @@ func (sc *SvcClient) updateEndpoint(node *registry.Node) {
         if ep.key == node.Path {
             //关心的数据确实发生变化
             if !ep.equalTo(node) {
-                fmt.Printf("update endpoint<%+v> by node<%+v>\n", ep, node)
+                log.Printf("[prpc] update endpoint<%+v> by node<%+v>", ep, node)
                 ep.update(node)
             }
             return
         }
     }
-    fmt.Printf("node<%+v> update, found no corresponding endpoin\n", node)
+    log.Printf("[prpc][ERROR] node<%+v> update, found no corresponding endpoint", node)
 }
 
 func (sc *SvcClient) hashCode() (string, error) {
@@ -283,7 +283,7 @@ func (sc *SvcClient) hashCode() (string, error) {
     for _, v := range []interface{}{int32(sc.index), int32(sc.selectType)} {
         err = binary.Write(buf, endian, v)
         if err != nil {
-            fmt.Println("binary.Write failed:", err)
+            log.Println("[prpc][ERROR] binary.Write failed:", err)
             return "", err
         }
     }
@@ -299,14 +299,14 @@ func (sc *SvcClient) hashCode() (string, error) {
 }
 
 func (sc *SvcClient) dumpMetrics() {
-    fmt.Println("******* dumpMetrics *******")
+    log.Println("******* dumpMetrics *******")
     sc.statLock.Lock()
-    fmt.Printf("reqTimes<%v> succTimes<%v>\n", sc.reqTimes, sc.succTimes)
+    log.Printf("reqTimes<%v> succTimes<%v>", sc.reqTimes, sc.succTimes)
     sc.statLock.Unlock()
 
     for _, ep := range sc.endPoints {
         ep.lock.Lock()
-        fmt.Printf("endpoint: index<%v> weight<%v> callTimes<%v>\n", ep.index, ep.weight, ep.callTimes)
+        log.Printf("endpoint: index<%v> weight<%v> callTimes<%v>", ep.index, ep.weight, ep.callTimes)
         ep.lock.Unlock()
     }
 }
@@ -337,7 +337,7 @@ func newSvcClient(service, group string, reg *registry.Registry, opts ...fnOptio
     slt, err := createSelector(cs)
     if err != nil {
         //handle err
-        fmt.Printf("createSelector err: %v\n", err)
+        log.Printf("createSelector err: %v\n", err)
         return nil
     }
     sc.selector = slt

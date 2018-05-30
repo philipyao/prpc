@@ -47,7 +47,7 @@ func (call *Call) done() {
     default:
         // We don't want to block here. It is the caller's responsibility to make
         // sure the channel has enough buffer space. See comment in Go().
-        log.Println("call done capcity out of needs")
+        log.Println("[prpc][ERROR] call done capcity out of needs")
     }
 }
 
@@ -70,13 +70,13 @@ type RPCClient struct {
 func newRPCClient(addr string, styp codec.SerializeType) *RPCClient {
     serializer := codec.GetSerializer(styp)
     if serializer == nil {
-        log.Printf("styp %v not support", styp)
+        log.Printf("[prpc][ERROR] styp %v not support", styp)
         return nil
     }
     addr = strings.TrimSpace(addr)
     conn, err := net.Dial("tcp", addr)
     if err != nil {
-        log.Printf("conn to rpc server<%v> error %v", addr, err)
+        log.Printf("[prpc][ERROR] conn to rpc server<%v> error %v", addr, err)
         return nil
     }
     client := &RPCClient{
@@ -108,16 +108,16 @@ func (rc *RPCClient) Call(ctx context.Context, serviceMethod string, args interf
     done := rc.doCall(seq, serviceMethod, args, reply)
     select {
     case <- rc.shutdown:
-        log.Println("call encounter shutdown")
+        log.Println("[prpc] call encounter shutdown")
         return ErrShutdown
     case <- ctx.Done():     //cancelled by caller
         rc.mutex.Lock()
         delete(rc.pending, seq)
         rc.mutex.Unlock()
-        log.Printf("call canceled by context: %v", ctx.Err())
+        log.Printf("[prpc] call canceled by context: %v", ctx.Err())
         return ctx.Err()
     case call := <- done:
-        log.Printf("call rsp: %v", call.Error)
+        log.Printf("[prpc] call rsp: %v", call.Error)
         return call.Error
     }
 }
@@ -138,10 +138,10 @@ func (rc *RPCClient) Go(ctx context.Context, serviceMethod string, args interfac
 
         select {
         case <- rc.shutdown:
-            log.Println("Go encounter shutdown")
+            log.Println("[prpc] Go() encounter shutdown")
             return
         case <- ctx.Done():             //cancelled by caller
-            log.Println("Go() canceled by caller")
+            log.Println("[prpc] Go() canceled by caller")
             rc.mutex.Lock()
             delete(rc.pending, seq)
             rc.mutex.Unlock()
@@ -167,9 +167,9 @@ func (rc *RPCClient) Close() error {
     //关闭tcpconn
     rc.conn.Close()
 
-    log.Println("call shutdown, wait")
+    log.Println("[prpc] call shutdown, wait")
     rc.wg.Wait()
-    log.Println("wait ok")
+    log.Println("[prpc] wait ok")
 
 
     return nil
@@ -209,7 +209,7 @@ func (rc *RPCClient) send(call *Call) {
     data, err := pkg.Pack(call.ServiceMethod, call.Args, rc.serializer)
     if err != nil {
         //todo
-        log.Printf("pack error %v", err)
+        log.Printf("[prpc][ERROR] pack error %v", err)
         rc.mutex.Lock()
         call = rc.pending[call.Seq]
         delete(rc.pending, call.Seq)
@@ -225,7 +225,7 @@ func (rc *RPCClient) send(call *Call) {
     //todo write timeout SetWriteDeadline
     _, err = rc.conn.Write(data)
     if err != nil {
-        log.Printf("conn write error %v", err)
+        log.Printf("[prpc][ERROR] conn write error %v", err)
         rc.mutex.Lock()
         call = rc.pending[call.Seq]
         delete(rc.pending, call.Seq)
@@ -249,7 +249,7 @@ func (rc *RPCClient) input() {
     for err == nil {
         select {
         case <- rc.shutdown:
-            log.Println("input() encounter shutdown, return")
+            log.Println("[prpc] input() encounter shutdown, return")
             return
         default:
         }
@@ -268,14 +268,14 @@ func (rc *RPCClient) input() {
                             continue
                         }
                     }
-                    log.Printf("read response msg error: %v", err)
+                    log.Printf("[prpc][ERROR] read response msg error: %v", err)
                 }
             }
             break
         }
         if rmsg.IsHeartbeat() {
             //todo 处理rpc心跳
-            log.Println("heartbeat received")
+            log.Println("[prpc] heartbeat received")
             continue
         }
 
@@ -289,7 +289,7 @@ func (rc *RPCClient) input() {
         switch {
         case call == nil:
             // We've got no pending call.
-            log.Printf("rpc request seqno<%v> not found", seq)
+            log.Printf("[prpc] rpc request seqno<%v> not found", seq)
             continue
         default:
             if rmsg.ServiceMethod() != call.ServiceMethod {
@@ -306,7 +306,7 @@ func (rc *RPCClient) input() {
     }
 
     // Terminate pending calls.
-    log.Printf("stop rpc_client input(): %v", err)
+    log.Printf("[prpc] stop rpc_client input(): %v", err)
     rc.mutex.Lock()
     closing := rc.closing
     rc.mutex.Unlock()
@@ -327,7 +327,7 @@ func (rc *RPCClient) input() {
     }
     rc.mutex.Unlock()
     if err != io.EOF && !closing {
-        log.Println("rpc: client protocol error:", err)
+        log.Println("[prpc][ERROR] rpc: client protocol error:", err)
     }
 }
 

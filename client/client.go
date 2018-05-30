@@ -1,10 +1,10 @@
 package client
 
 import (
-    "fmt"
     "sync"
 
     "github.com/philipyao/prpc/registry"
+    "log"
 )
 
 type Client struct {
@@ -24,7 +24,7 @@ func New(regConfig interface{}) *Client {
     default:
     }
     if reg == nil {
-        fmt.Printf("make registry error: %+v\n", regConfig)
+        log.Printf("[prpc][ERROR] make registry error: %+v", regConfig)
         return nil
     }
 
@@ -38,24 +38,24 @@ func (c *Client) Service(service, group string, opts ...fnOptionService) *SvcCli
     svc := newSvcClient(service, group, c.registry, opts...)
     id, err := svc.hashCode()
     if err != nil {
-        fmt.Printf("system error: %v\n", err)
+        log.Printf("[prpc][ERROR] system error: %v", err)
         return nil
     }
     c.mu.Lock()
     defer c.mu.Unlock()
     sc, exist := c.services[id]
     if exist {
-        fmt.Printf("return existed service: id<%v>, sc<%#v>\n", id, sc)
+        log.Printf("[prpc] return existed service: id<%v>, sc<%p>", id, sc)
         return sc
     }
 
     //prepare to create new service
     err = svc.Subscribe()
     if err != nil {
-        fmt.Printf("subscribe new service err: %v, sc %#v\n", err, svc)
+        log.Printf("[prpc][ERROR] subscribe new service err: %v, sc %p", err, svc)
         return nil
     }
-    fmt.Printf("new service: id<%v>, sc<%#v>\n", id, svc)
+    log.Printf("[prpc] new service: id<%v>, sc<%#v>", id, svc)
     c.services[id] = svc
     return svc
 }

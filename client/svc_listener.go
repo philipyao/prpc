@@ -7,7 +7,7 @@ import (
 )
 
 func (sc *SvcClient) OnServiceChange(adds map[string]*registry.Node, dels []string) {
-    log.Printf("OnServiceChange: adds %+v, dels %+v", adds, dels)
+    log.Printf("[prpc] OnServiceChange: adds %+v, dels %+v", adds, dels)
     var nodes []*registry.Node
     for _, v := range adds {
         nodes = append(nodes, v)
@@ -21,6 +21,6 @@ func (sc *SvcClient) OnServiceChange(adds map[string]*registry.Node, dels []stri
 }
 
 func (sc *SvcClient) OnNodeChange(key string, node *registry.Node) {
-    log.Printf("OnNodeChange: key %s, svc %+v", key, node)
+    log.Printf("[prpc] OnNodeChange: key %s, svc %+v", key, node)
     sc.updateEndpoint(node)
 }
