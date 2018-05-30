@@ -52,7 +52,7 @@ func (ep *endPoint) update(node *registry.Node) {
     ep.version = node.Version
 }
 
-type svcClient struct {
+type SvcClient struct {
     group   string
     service string
 
@@ -75,7 +75,7 @@ type svcClient struct {
     registry *registry.Registry
 }
 
-func (sc *svcClient) Subscribe() error {
+func (sc *SvcClient) Subscribe() error {
     //获取endpoints, watch endpoints的变化
     nodes, err := sc.registry.Subscribe(sc.service, sc.group, sc)
     if err != nil {
@@ -87,7 +87,7 @@ func (sc *svcClient) Subscribe() error {
     }
     return nil
 }
-func (sc *svcClient) Call(serviceMethod string, args interface{}, reply interface{}) error {
+func (sc *SvcClient) Call(serviceMethod string, args interface{}, reply interface{}) error {
     //todo 过滤机制
     defer func() {
        if r := recover(); r != nil {
@@ -143,7 +143,7 @@ func (sc *svcClient) Call(serviceMethod string, args interface{}, reply interfac
     }
 }
 
-func (sc *svcClient) doCall(serviceMethod string, args interface{}, reply interface{}) error {
+func (sc *SvcClient) doCall(serviceMethod string, args interface{}, reply interface{}) error {
     var ep *endPoint
     if sc.index >= 0 {
         //指定固定的index
@@ -197,11 +197,11 @@ func (sc *svcClient) doCall(serviceMethod string, args interface{}, reply interf
     return err
 }
 
-func (sc *svcClient) setVersion(v string) {
+func (sc *SvcClient) setVersion(v string) {
     sc.version = v
 }
 
-func (sc *svcClient) setIndex(index int) error {
+func (sc *SvcClient) setIndex(index int) error {
     if index < 0 {
         return errors.New("negtive index not allowed")
     }
@@ -209,7 +209,7 @@ func (sc *svcClient) setIndex(index int) error {
     return nil
 }
 
-func (sc *svcClient) setSelectType(styp selectType) error {
+func (sc *SvcClient) setSelectType(styp selectType) error {
     if int(styp) < 0 || int(styp) > len(selectors) {
         return fmt.Errorf("select type %v not support", styp)
     }
@@ -217,7 +217,7 @@ func (sc *svcClient) setSelectType(styp selectType) error {
     return nil
 }
 
-func (sc *svcClient) decorate(opts ...fnOptionService) error {
+func (sc *SvcClient) decorate(opts ...fnOptionService) error {
     for n, fnOpt := range opts {
         if fnOpt == nil {
             return fmt.Errorf("err: decrator service client, nil option no.%v", n+1)
@@ -230,7 +230,7 @@ func (sc *svcClient) decorate(opts ...fnOptionService) error {
     return nil
 }
 
-func (sc *svcClient) addEndpoint(nodes []*registry.Node) {
+func (sc *SvcClient) addEndpoint(nodes []*registry.Node) {
     for _, node := range nodes {
         ep := &endPoint{
             key:     node.Path,
@@ -250,7 +250,7 @@ func (sc *svcClient) addEndpoint(nodes []*registry.Node) {
     }
 }
 
-func (sc *svcClient) delEndpoint(dels []string) {
+func (sc *SvcClient) delEndpoint(dels []string) {
     for _, del := range dels {
         for i, ep := range sc.endPoints {
             if del == ep.key {
@@ -262,7 +262,7 @@ func (sc *svcClient) delEndpoint(dels []string) {
     }
 }
 
-func (sc *svcClient) updateEndpoint(node *registry.Node) {
+func (sc *SvcClient) updateEndpoint(node *registry.Node) {
     for _, ep := range sc.endPoints {
         if ep.key == node.Path {
             //关心的数据确实发生变化
@@ -276,7 +276,7 @@ func (sc *svcClient) updateEndpoint(node *registry.Node) {
     fmt.Printf("node<%+v> update, found no corresponding endpoin\n", node)
 }
 
-func (sc *svcClient) hashCode() (string, error) {
+func (sc *SvcClient) hashCode() (string, error) {
     var err error
     endian := binary.LittleEndian
     buf := new(bytes.Buffer)
@@ -298,7 +298,7 @@ func (sc *svcClient) hashCode() (string, error) {
     return fmt.Sprintf("%x", hash.Sum(nil)), nil
 }
 
-func (sc *svcClient) dumpMetrics() {
+func (sc *SvcClient) dumpMetrics() {
     fmt.Println("******* dumpMetrics *******")
     sc.statLock.Lock()
     fmt.Printf("reqTimes<%v> succTimes<%v>\n", sc.reqTimes, sc.succTimes)
@@ -313,8 +313,8 @@ func (sc *svcClient) dumpMetrics() {
 
 //===========================================================
 
-func newSvcClient(service, group string, reg *registry.Registry, opts ...fnOptionService) *svcClient {
-    sc := &svcClient{
+func newSvcClient(service, group string, reg *registry.Registry, opts ...fnOptionService) *SvcClient {
+    sc := &SvcClient{
         group:      group,
         service:    service,
         registry:   reg,

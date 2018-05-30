@@ -6,7 +6,7 @@ import (
     //"path/filepath"
 )
 
-func (sc *svcClient) OnServiceChange(adds map[string]*registry.Node, dels []string) {
+func (sc *SvcClient) OnServiceChange(adds map[string]*registry.Node, dels []string) {
     log.Printf("OnServiceChange: adds %+v, dels %+v", adds, dels)
     var nodes []*registry.Node
     for _, v := range adds {
@@ -20,7 +20,7 @@ func (sc *svcClient) OnServiceChange(adds map[string]*registry.Node, dels []stri
     }
 }
 
-func (sc *svcClient) OnNodeChange(key string, node *registry.Node) {
+func (sc *SvcClient) OnNodeChange(key string, node *registry.Node) {
     log.Printf("OnNodeChange: key %s, svc %+v", key, node)
     sc.updateEndpoint(node)
 }

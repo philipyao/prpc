@@ -11,7 +11,7 @@ type Client struct {
     registry *registry.Registry
 
     mu       sync.Mutex            //protect following
-    services map[string]*svcClient //id -> svcClient
+    services map[string]*SvcClient //id -> SvcClient
 
     //todo middleware
 }
@@ -29,12 +29,12 @@ func New(regConfig interface{}) *Client {
     }
 
     c := new(Client)
-    c.services = make(map[string]*svcClient)
+    c.services = make(map[string]*SvcClient)
     c.registry = reg
     return c
 }
 
-func (c *Client) Service(service, group string, opts ...fnOptionService) *svcClient {
+func (c *Client) Service(service, group string, opts ...fnOptionService) *SvcClient {
     svc := newSvcClient(service, group, c.registry, opts...)
     id, err := svc.hashCode()
     if err != nil {
