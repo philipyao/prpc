@@ -16,11 +16,14 @@ import (
     "github.com/philipyao/prpc/codec"
     "github.com/philipyao/prpc/message"
     "github.com/philipyao/prpc/registry"
+    "runtime"
+    "bufio"
 )
 
 const (
     DefaultSrvIndexWeight = 10
     DefaultMsgPack        = codec.SerializeTypeMsgpack
+    MaxReadSize           = 65535   //64k
 )
 
 // Precompute the reflect type for error. Can't use error directly
@@ -81,7 +84,6 @@ func isExportedOrBuiltinType(t reflect.Type) bool {
 type Server struct {
     group string
     index int
-    addr  string //ip:port
 
     weight     int
     version    string
@@ -98,51 +100,25 @@ type Server struct {
     done chan struct{}
 }
 
-func New(group string, index int, addr string) *Server {
-    laddr, err := net.ResolveTCPAddr("tcp", addr)
-    if err != nil {
-        fmt.Printf("[rpc] ResolveTCPAddr() error: addr %v, err %v\n", addr, err)
-        return nil
-    }
-
-    l, err := net.ListenTCP("tcp", laddr)
-    if err != nil {
-        fmt.Printf("[rpc ] rpc listen on %v, %v\n", laddr, err)
-        return nil
-    }
-
-    return &Server{
+func New(group string, index int, opts ...FnOptionServer) *Server {
+    srv := &Server{
         group:      group,
         index:      index,
-        addr:       addr,
         weight:     DefaultSrvIndexWeight,
         styp:       DefaultMsgPack,
         version:    registry.DefaultVersion,
         serializer: codec.GetSerializer(DefaultMsgPack),
         serviceMap: make(map[string]*service),
-        listener:   l,
-        done:       make(chan struct{}, 1),
+        done:       make(chan struct{}),
     }
-}
-
-//设置权重
-func (s *Server) SetWeight(weight int) error {
-    if weight < 0 {
-        return errors.New("invalid weight")
+    for _, opt := range opts {
+        err := opt(srv)
+        if err != nil {
+            log.Printf("[prpc][error] decorate server: %v", err)
+            return nil
+        }
     }
-    s.weight = weight
-    return nil
-}
-
-//设置打解包方法，默认msgpack
-func (s *Server) SetCodec(tp int) error {
-    //todo
-    return nil
-}
-
-func (s *Server) SetVersion(version string) error {
-    s.version = version
-    return nil
+    return srv
 }
 
 //注册rpc处理
@@ -150,7 +126,7 @@ func (s *Server) Handle(rcvr interface{}, name string) error {
     return s.handle(rcvr, name)
 }
 
-func (s *Server) Serve(wg *sync.WaitGroup, regConfig interface{}) {
+func (s *Server) Serve(wg *sync.WaitGroup, addr string, regConfig interface{}) {
     var reg *registry.Registry
     switch regConfig.(type) {
     case *registry.RegConfigZooKeeper:
@@ -163,19 +139,27 @@ func (s *Server) Serve(wg *sync.WaitGroup, regConfig interface{}) {
     }
     s.registry = reg
 
-    fmt.Println()
-    log.Println(">>============================================")
-    log.Println(">> rpc service start to serve")
-    log.Printf(">> ...[args] group: <%v>\n", s.group)
-    log.Printf(">> ...[args] index: <%v>\n", s.index)
-    log.Printf(">> ...[args] addr:  <%v>\n", s.addr)
-    var err error
+    laddr, err := net.ResolveTCPAddr("tcp", addr)
+    if err != nil {
+        panic(fmt.Sprintf("[rpc][error] ResolveTCPAddr(): addr %v, errmsg %v\n", addr, err))
+    }
+
+    l, err := net.ListenTCP("tcp", laddr)
+    if err != nil {
+        panic(fmt.Sprintf("[rpc] listen on %v, %v\n", laddr, err))
+    }
+    s.listener = l
+
+    log.Println("[rpc] >> rpc service start to serve")
+    log.Printf("[rpc] >> [args] group: <%v>", s.group)
+    log.Printf("[rpc] >> [args] index: <%v>", s.index)
+    log.Printf("[rpc] >> [args] addr:  <%v>", s.listener.Addr().String())
     for sname := range s.serviceMap {
-        err = reg.Register(
+        err := reg.Register(
             sname,
             s.group,
             s.index,
-            s.addr,
+            s.listener.Addr().String(),
             registry.WithWeight(s.weight),
             registry.WithVersion(s.version),
             registry.WithSerialize(s.styp),
@@ -183,28 +167,26 @@ func (s *Server) Serve(wg *sync.WaitGroup, regConfig interface{}) {
         if err != nil {
             panic(fmt.Sprintf("register %v err %v", sname, err))
         }
-        //log.Printf("register %v ok", sname)
     }
     s.doServe(wg)
 }
 
 func (s *Server) Stop() {
-    log.Println("try stop srv.")
+    log.Println("[rpc] try stop service.")
     close(s.done)
 }
 
 func (s *Server) Fini() {
-    log.Println("finilize srv...")
+    log.Println("[rpc] finilize service...")
     for sname := range s.serviceMap {
         //注销服务
-        log.Printf("unregister service %v: %v.%v\n", sname, s.group, s.index)
+        log.Printf("[rpc] unregister service %v: %v.%v\n", sname, s.group, s.index)
         err := s.registry.Unregister(sname, s.group, s.index)
         if err != nil {
-            log.Printf("unregister err: %v\n", err)
+            log.Printf("[rpc][error] unregister err: %v\n", err)
         }
     }
     s.registry.Close()
-    s.listener.Close()
 }
 
 //========================================================================
@@ -215,12 +197,12 @@ func (server *Server) handle(rcvr interface{}, name string) error {
     s.rcvr = reflect.ValueOf(rcvr)
     sname := name
     if sname == "" {
-        s := "rpc.Register: no service name for type " + s.typ.String()
+        s := "[rpc][error] rpc.Register: no service name for type " + s.typ.String()
         log.Print(s)
         return errors.New(s)
     }
     if !isExported(sname) {
-        s := "rpc.Register: type " + sname + " is not exported"
+        s := "[rpc][error] rpc.Register: type " + sname + " is not exported"
         log.Print(s)
         return errors.New(s)
     }
@@ -235,18 +217,19 @@ func (server *Server) handle(rcvr interface{}, name string) error {
         // To help the user, see if a pointer receiver would work.
         method := suitableMethods(reflect.PtrTo(s.typ))
         if len(method) != 0 {
-            str = "rpc.Register: type " + sname + " has no exported methods of suitable type (hint: pass a pointer to value of that type)"
+            str = "[rpc][error] rpc.Register: type " + sname + " has no exported methods of suitable type (hint: pass a pointer to value of that type)"
         } else {
-            str = "rpc.Register: type " + sname + " has no exported methods of suitable type"
+            str = "[rpc][error] rpc.Register: type " + sname + " has no exported methods of suitable type"
         }
         log.Print(str)
         return errors.New(str)
     }
 
     if _, dup := server.serviceMap[sname]; dup {
-        return errors.New("rpc: service already defined: " + sname)
+        return errors.New("[rpc][error] rpc: service already defined: " + sname)
     }
     server.serviceMap[sname] = s
+    log.Printf("[rpc] handle with %v", sname)
     return nil
 }
 
@@ -263,13 +246,13 @@ func (s *Server) doServe(wg *sync.WaitGroup) {
             return
         default:
         }
-        s.listener.SetDeadline(time.Now().Add(1e9))
+        s.listener.SetDeadline(time.Now().Add(time.Second))
         conn, err := s.listener.AcceptTCP()
         if err != nil {
             if opErr, ok := err.(*net.OpError); ok && opErr.Timeout() {
                 continue
             }
-            log.Printf("[rpc] Error: accept connection, %v", err.Error())
+            log.Printf("[rpc][error] accept connection, %v", err.Error())
             break
         }
         log.Printf("[rpc] accept new connection: %p", conn)
@@ -278,17 +261,31 @@ func (s *Server) doServe(wg *sync.WaitGroup) {
 }
 
 func (s *Server) serveConn(conn io.ReadWriteCloser) {
+    defer func() {
+        if err := recover(); err != nil {
+            const size = 64 << 10
+            buf := make([]byte, size)
+            ss := runtime.Stack(buf, false)
+            if ss > size {
+                ss = size
+            }
+            buf = buf[:ss]
+            log.Printf("panic: %v", buf)
+        }
+    }()
+
     wg := new(sync.WaitGroup)
+    reader := bufio.NewReaderSize(conn, MaxReadSize)
     for {
-        reqmsg, err := message.NewResponse(conn)
+        reqmsg, err := message.NewResponse(reader)
         if err != nil {
-            log.Printf("[rpc] Error: NewResponse %v", err)
+            log.Printf("[rpc][error] NewResponse %v", err)
             break
         }
         service, mtype, argv, replyv, err := s.unpackRequest(reqmsg)
         if err != nil {
             if err != io.EOF {
-                log.Println("rpc:", err)
+                log.Printf("[rpc][error] unpackRequest: %v", err)
             }
             continue
         }
@@ -319,12 +316,12 @@ func (s *Server) unpackRequest(msg *message.Message) (service *service, mtype *m
     // Look up the request.
     service, ok := s.serviceMap[serviceName]
     if !ok {
-        err = errors.New("rpc: can't find service " + serviceName)
+        err = errors.New("[rpc] can't find service " + serviceName)
         return
     }
     mtype = service.method[methodName]
     if mtype == nil {
-        err = errors.New("rpc: can't find method " + methodName)
+        err = errors.New("[rpc] can't find method " + methodName)
         return
     }
 
@@ -339,6 +336,7 @@ func (s *Server) unpackRequest(msg *message.Message) (service *service, mtype *m
     // argv guaranteed to be a pointer now.
     err = msg.Unpack(s.serializer, argv.Interface())
     if err != nil {
+        log.Printf("[rpc][error] Unpack: %v", err)
         return
     }
     if argIsValue {
@@ -357,7 +355,7 @@ func (s *Server) unpackRequest(msg *message.Message) (service *service, mtype *m
 }
 
 func (s *Server) sendResponse(conn io.ReadWriteCloser, reqmsg *message.Message, reply interface{}, errmsg string) {
-    log.Printf("sendResponse: conn %v, reply %+v, seqno %v, method %v", conn, reply, reqmsg.Seqno(), reqmsg.ServiceMethod())
+    log.Printf("[rpc] sendResponse: conn %v, reply %+v, seqno %v, method %v", conn, reply, reqmsg.Seqno(), reqmsg.ServiceMethod())
     pkg := message.NewRequest(message.MsgKindDefault, reqmsg.Seqno())
     // Encode the response header
     if errmsg != "" {
@@ -368,10 +366,10 @@ func (s *Server) sendResponse(conn io.ReadWriteCloser, reqmsg *message.Message, 
     data, err := pkg.Pack(reqmsg.ServiceMethod(), reply, s.serializer)
     if err != nil {
         //todo
-        log.Printf("pack error %v", err)
+        log.Printf("[rpc] pack error: %v", err)
         return
     }
-    log.Printf("pack ok, data len %v", len(data))
+    //todo write timeout
     conn.Write(data)
 }
 

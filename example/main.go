@@ -56,19 +56,21 @@ func main() {
         panic("invalid index specified")
     }
     addr := fmt.Sprintf("%v:%v", *ip, *port)
+    opts := []server.FnOptionServer{}
+    if *weight >= 0 {
+        opts = append(opts, server.WithWeight(*weight))
+    }
+    if *version != "" {
+        opts = append(opts, server.WithVersion(*version))
+    }
+
     srv := server.New(
         *group,
         *index,
-        addr,
+        opts...
     )
     if srv == nil {
         log.Fatal("server.New error, exit")
-    }
-    if *weight >= 0 {
-        srv.SetWeight(*weight)
-    }
-    if *version != "" {
-        srv.SetVersion(*version)
     }
     err := srv.Handle(new(Arith), "Arith")
     if err != nil {
@@ -76,7 +78,7 @@ func main() {
     }
 
     wg.Add(1)
-    go srv.Serve(&wg, &registry.RegConfigZooKeeper{ZKAddr: ZKAddr})
+    go srv.Serve(&wg, addr, &registry.RegConfigZooKeeper{ZKAddr: ZKAddr})
     go func(){
        //time.Sleep(10 * time.Second)
        //
