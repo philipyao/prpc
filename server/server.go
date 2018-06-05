@@ -286,7 +286,9 @@ func (s *Server) serveConn(conn io.ReadWriteCloser) {
     for {
         reqmsg, err := message.NewResponse(reader)
         if err != nil {
-            log.Printf("[rpc][error] NewResponse %v", err)
+            if err != io.EOF {
+                log.Printf("[rpc] err: NewResponse %v", err)
+            }
             break
         }
         service, mtype, argv, replyv, err := s.unpackRequest(reqmsg)
