@@ -19,12 +19,12 @@ func (id *ID) Dump() string {
 func (id *ID) Load(s string) error {
     strs := strings.Split(s, ".")
     if len(strs) != 2 {
-        return fmt.Errorf("illformed node id %v", s)
+        return fmt.Errorf("[registry] illformed node id %v", s)
     }
     id.Group = strs[0]
     idx, err := strconv.Atoi(strs[1])
     if err != nil {
-        return fmt.Errorf("invalid index from string %v", s)
+        return fmt.Errorf("[registry] invalid index from string %v", s)
     }
     id.Index = idx
     return nil
@@ -58,7 +58,7 @@ func (node *Node) key() string {
 func (node *Node) decorate(opts ...fnOptionNode) error {
     for n, fnOpt := range opts {
         if fnOpt == nil {
-            return fmt.Errorf("err: decorate node, nil option no.%v", n+1)
+            return fmt.Errorf("[registry] err: decorate node, nil option no.%v", n+1)
         }
         err := fnOpt(node)
         if err != nil {

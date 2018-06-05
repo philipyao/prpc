@@ -36,6 +36,10 @@ type Registry struct {
     wg   sync.WaitGroup
 }
 
+func init() {
+    log.SetFlags(log.LstdFlags | log.Lshortfile)
+}
+
 func New(zkAddr string) *Registry {
     r := &Registry{
         rt:   newRemoteZooKeeper(zkAddr),
@@ -43,7 +47,7 @@ func New(zkAddr string) *Registry {
     }
     err := r.rt.Connect()
     if err != nil {
-        fmt.Printf("connect to remote error: %v\n", err)
+        log.Printf("[registry] connect to remote error: %v", err)
         return nil
     }
     return r
@@ -71,10 +75,10 @@ func (r *Registry) Register(service, group string, index int, addr string, opts 
     }
     nodeData, err := node.encode()
     if err != nil {
-        fmt.Printf("encode node<%+v> err %v\n", node, err)
+        log.Printf("[registry] encode node<%+v> err %v", node, err)
         return err
     }
-    log.Printf("====== register service: %v, %v", node.key(), string(nodeData))
+    log.Printf("[registry] register service(%v): %v, %v", service, node.key(), string(nodeData))
 
     //todo 检查cache是否存在，否则报错
 
@@ -88,13 +92,13 @@ func (r *Registry) Register(service, group string, index int, addr string, opts 
                 var preNode Node
                 terr = preNode.decode(data)
                 if terr == nil && node.Addr == preNode.Addr {
-                    log.Println("find node with the same addr already exist, clean it up")
+                    log.Println("[registry] find node with the same addr already exist, clean it up")
                     r.Unregister(service, group, index)
                     return r.rt.CreateServiceNode(makeServiceKey(service, group), node.key(), nodeData)
                 }
             }
         }
-        fmt.Printf("remote create node<%+v> err %v\n", node, err)
+        log.Printf("[registry] remote create node<%+v> err %v", node, err)
         return err
     }
 
@@ -113,7 +117,7 @@ func (r *Registry) Unregister(service, group string, index int) error {
 func (r *Registry) Subscribe(service, group string, listener Listener) ([]*Node, error) {
     //todo check args
     if listener == nil {
-        return nil, errors.New("no listener specified")
+        return nil, errors.New("[registry] no event listener specified")
     }
     r.listener = listener
 
@@ -127,11 +131,11 @@ func (r *Registry) Subscribe(service, group string, listener Listener) ([]*Node,
         node.Path = k
         err := node.decode(v)
         if err != nil {
-            fmt.Printf("decode node err: %v, %v\n", err, string(v))
+            log.Printf("[registry] err: decode node: %v, %v", err, string(v))
             continue
         }
         if filepath.Base(k) != node.ID.Dump() {
-            fmt.Printf("node id mismatch: %v, %v\n", k, node.ID.Dump())
+            log.Printf("[registry] node id mismatch: %v, %v", k, node.ID.Dump())
             continue
         }
         nodes = append(nodes, node)
@@ -152,7 +156,7 @@ func (r *Registry) Close() {
         return
     default:
     }
-    fmt.Println("registry Close()")
+    log.Println("[prpc] registry Close()")
     if r.svcWatcher != nil {
         r.svcWatcher.Stop()
     }
@@ -181,7 +185,7 @@ func (r *Registry) watchService(service, group string) {
             break
         }
         if event.Err != nil {
-            fmt.Printf("Accept error: %v, break\n", event.Err)
+            log.Printf("[registry] accept error: %v, break", event.Err)
             break
         }
         adds := make(map[string]*Node)
@@ -195,7 +199,7 @@ func (r *Registry) watchService(service, group string) {
             err = node.decode([]byte(v))
             if err != nil {
                 //todo
-                fmt.Printf("decode add node<%v %v> err: %v\n", k, v, err)
+                log.Printf("[registry] decode add node<%v %v> err: %v", k, v, err)
                 continue
             }
             adds[k] = node
@@ -228,11 +232,11 @@ func (r *Registry) watchNode(nodePath string) {
             break
         }
         if nev.Err != nil {
-            fmt.Printf("watch node error: %v, break\n", nev.Err)
+            log.Printf("[registry] watch node error: %v, break", nev.Err)
             break
         }
         if nev.Path != nodePath {
-            fmt.Printf("node path mismatch: %v %+v, break\n", nodePath, nev)
+            log.Printf("[registry] node path mismatch: %v %+v, break", nodePath, nev)
             break
         }
         tnode := new(Node)
@@ -240,12 +244,12 @@ func (r *Registry) watchNode(nodePath string) {
         err = tnode.decode([]byte(nev.Value))
         if err != nil {
             //todo
-            fmt.Printf("decode node err: %v, %+v\n", nodePath, nev)
+            log.Printf("[registry] decode node err: %v, %+v", nodePath, nev)
             continue
         }
         if filepath.Base(nev.Path) != tnode.ID.Dump() {
             //todo
-            fmt.Printf("node id mismatch: %+v %+v\n", nev, tnode)
+            log.Printf("[registry] node id mismatch: %+v %+v", nev, tnode)
             break
         }
         r.listener.OnNodeChange(nev.Path, tnode)

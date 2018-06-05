@@ -14,7 +14,7 @@ type fnOptionNode func(node *Node) error
 
 func WithWeight(weight int) fnOptionNode {
     if weight < 0 || weight > maxWeight {
-        log.Println("invalid weight value")
+        log.Println("[registry] invalid weight value")
         return nil
     }
     return func(node *Node) error {
@@ -30,7 +30,7 @@ func WithSerialize(styp codec.SerializeType) fnOptionNode {
 }
 func WithVersion(version string) fnOptionNode {
     if version == "" {
-        log.Println("empty version not allowed")
+        log.Println("[registry] empty version not allowed")
         return nil
     }
     return func(node *Node) error {

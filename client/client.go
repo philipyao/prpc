@@ -7,6 +7,10 @@ import (
     "log"
 )
 
+func init() {
+    log.SetFlags(log.LstdFlags | log.Lshortfile)
+}
+
 type Client struct {
     registry *registry.Registry
 

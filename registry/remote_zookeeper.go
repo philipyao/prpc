@@ -24,7 +24,7 @@ type ServiceWatcherZK struct {
 func (swzk *ServiceWatcherZK) Accept() *ServiceEvent {
     zkev := <-swzk.events
     if zkev == nil {
-        fmt.Println("service events closed!")
+        log.Println("service events closed!")
         return nil
     }
     return &ServiceEvent{
@@ -50,7 +50,7 @@ type NodeWatcherZK struct {
 func (nwzk *NodeWatcherZK) Accept() *NodeEvent {
     zkev := <-nwzk.events
     if zkev == nil {
-        fmt.Println("node events closed!")
+        log.Println("node events closed!")
         return nil
     }
     return &NodeEvent{
@@ -139,7 +139,7 @@ func (rz *remoteZooKeeper) DeleteServiceNode(service, key string) error {
     }
 
     nodePath := makePath(servicePath, key)
-    log.Printf("delete service node %v\n", nodePath)
+    log.Printf("delete service node %v", nodePath)
     return rz.client.Delete(nodePath)
 }
 

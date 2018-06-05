@@ -45,6 +45,10 @@ type service struct {
     method map[string]*methodType // registered methods
 }
 
+func init() {
+    log.SetFlags(log.LstdFlags | log.Lshortfile)
+}
+
 func (s *service) call(server *Server, conn io.ReadWriteCloser, wg *sync.WaitGroup, mtype *methodType, reqmsg *message.Message, argv, replyv reflect.Value) {
     if wg != nil {
         defer wg.Done()
