@@ -2,8 +2,6 @@ package main
 
 import (
     "log"
-    "sync"
-    //"time"
     "flag"
     "fmt"
     "github.com/philipyao/prpc/registry"
@@ -46,8 +44,6 @@ func init() {
 }
 
 func main() {
-    var wg sync.WaitGroup
-
     flag.Parse()
     if *group == "" {
         panic("no group specified")
@@ -77,15 +73,18 @@ func main() {
         log.Fatalf("register error %v\n", err)
     }
 
-    wg.Add(1)
-    go srv.Serve(&wg, addr, &registry.RegConfigZooKeeper{ZKAddr: ZKAddr})
-    go func(){
-       //time.Sleep(10 * time.Second)
-       //
-       // srv.Stop()
-    }()
+    err = srv.Serve(addr, &registry.RegConfigZooKeeper{ZKAddr: ZKAddr})
+    if err != nil {
+        log.Fatal(err)
+    }
 
-    wg.Wait()
-    srv.Fini()
+    waiter := make(chan struct{})
+    go func(){
+        time.Sleep(10 * time.Second)
+        srv.Stop()
+        srv.Fini()
+        close(waiter)
+    }()
+    <- waiter
     log.Println("stopped.")
 }

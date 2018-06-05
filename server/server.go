@@ -102,6 +102,7 @@ type Server struct {
     listener *net.TCPListener
 
     done chan struct{}
+    wg sync.WaitGroup
 }
 
 func New(group string, index int, opts ...FnOptionServer) *Server {
@@ -130,7 +131,7 @@ func (s *Server) Handle(rcvr interface{}, name string) error {
     return s.handle(rcvr, name)
 }
 
-func (s *Server) Serve(wg *sync.WaitGroup, addr string, regConfig interface{}) {
+func (s *Server) Serve(addr string, regConfig interface{}) error {
     var reg *registry.Registry
     switch regConfig.(type) {
     case *registry.RegConfigZooKeeper:
@@ -139,18 +140,18 @@ func (s *Server) Serve(wg *sync.WaitGroup, addr string, regConfig interface{}) {
     }
 
     if reg == nil {
-        panic("registry failed")
+        return errors.New("[registry] invalid registry provided")
     }
     s.registry = reg
 
     laddr, err := net.ResolveTCPAddr("tcp", addr)
     if err != nil {
-        panic(fmt.Sprintf("[rpc][error] ResolveTCPAddr(): addr %v, errmsg %v\n", addr, err))
+        return fmt.Errorf("[rpc] err: ResolveTCPAddr(): addr %v, errmsg %v\n", addr, err)
     }
 
     l, err := net.ListenTCP("tcp", laddr)
     if err != nil {
-        panic(fmt.Sprintf("[rpc] listen on %v, %v\n", laddr, err))
+        return fmt.Errorf("[rpc] err: listen on %v, %v\n", laddr, err)
     }
     s.listener = l
 
@@ -169,15 +170,19 @@ func (s *Server) Serve(wg *sync.WaitGroup, addr string, regConfig interface{}) {
             registry.WithSerialize(s.styp),
         )
         if err != nil {
-            panic(fmt.Sprintf("register %v err %v", sname, err))
+            return fmt.Errorf("register %v err %v", sname, err)
         }
     }
-    s.doServe(wg)
+    s.wg.Add(1)
+    go s.doServe()
+
+    return nil
 }
 
 func (s *Server) Stop() {
-    log.Println("[rpc] try stop service.")
+    log.Println("[rpc] try to stop service.")
     close(s.done)
+    s.wg.Wait()
 }
 
 func (s *Server) Fini() {
@@ -237,10 +242,8 @@ func (server *Server) handle(rcvr interface{}, name string) error {
     return nil
 }
 
-func (s *Server) doServe(wg *sync.WaitGroup) {
-    if wg != nil {
-        defer wg.Done()
-    }
+func (s *Server) doServe() {
+    defer s.wg.Done()
     defer s.listener.Close()
 
     for {
