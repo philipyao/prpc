@@ -78,8 +78,8 @@ func (r *Registry) Register(service, group string, index int, addr string, opts 
         log.Printf("[registry] encode node<%+v> err %v", node, err)
         return err
     }
-    log.Printf("[registry] register service(%v): %v, %v", service, node.key(), string(nodeData))
-
+    log.Printf("[registry] try to register service(%v): %v, %v",
+            service, node.key(), string(nodeData))
     //todo 检查cache是否存在，否则报错
 
 

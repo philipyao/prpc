@@ -93,7 +93,6 @@ func (rz *remoteZooKeeper) Connect() error {
 }
 
 func (rz *remoteZooKeeper) CreateServiceNode(service, key string, data []byte) error {
-    log.Printf("[registry] CreateServiceNode service<%v> key<%v>\n", service, key)
     var err error
     servicePath := makePath(defaultZKRootPath, service)
     err = rz.client.MakeDirP(servicePath)
