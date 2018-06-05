@@ -12,6 +12,7 @@ import (
     "log"
     "sync"
     "context"
+    "reflect"
 )
 
 const (
@@ -88,6 +89,11 @@ func (sc *SvcClient) Subscribe() error {
     return nil
 }
 func (sc *SvcClient) Call(serviceMethod string, args interface{}, reply interface{}) error {
+    val := reflect.ValueOf(reply)
+    if val.Kind() != reflect.Ptr || val.IsNil(){
+        return errors.New("reply should be pointer and not nil")
+    }
+
     //todo 过滤机制
     defer func() {
        if r := recover(); r != nil {
