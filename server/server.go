@@ -49,7 +49,8 @@ func init() {
     log.SetFlags(log.LstdFlags | log.Lshortfile)
 }
 
-func (s *service) call(server *Server, conn io.ReadWriteCloser, wg *sync.WaitGroup, mtype *methodType, reqmsg *message.Message, argv, replyv reflect.Value) {
+func (s *service) call(server *Server, conn io.ReadWriteCloser, wg *sync.WaitGroup,
+    mtype *methodType, reqmsg *message.Message, argv, replyv reflect.Value) {
     if wg != nil {
         defer wg.Done()
     }
@@ -71,8 +72,8 @@ func (s *service) call(server *Server, conn io.ReadWriteCloser, wg *sync.WaitGro
 
 // Is this an exported - upper case - name?
 func isExported(name string) bool {
-    rune, _ := utf8.DecodeRuneInString(name)
-    return unicode.IsUpper(rune)
+    r, _ := utf8.DecodeRuneInString(name)
+    return unicode.IsUpper(r)
 }
 
 // Is this type exported or a builtin?
@@ -112,16 +113,20 @@ func New(group string, index int, opts ...FnOptionServer) *Server {
         weight:     DefaultSrvIndexWeight,
         styp:       DefaultMsgPack,
         version:    registry.DefaultVersion,
-        serializer: codec.GetSerializer(DefaultMsgPack),
         serviceMap: make(map[string]*service),
         done:       make(chan struct{}),
     }
     for _, opt := range opts {
         err := opt(srv)
         if err != nil {
-            log.Printf("[prpc][error] decorate server: %v", err)
+            log.Printf("[prpc] err: decorate server: %v", err)
             return nil
         }
+    }
+    srv.serializer = codec.GetSerializer(srv.styp)
+    if srv.serializer == nil {
+        log.Printf("[prpc] err: unsupported styp %v", srv.styp)
+        return nil
     }
     return srv
 }
@@ -179,13 +184,11 @@ func (s *Server) Serve(addr string, regConfig interface{}) error {
     return nil
 }
 
-func (s *Server) Stop() {
+func (s *Server) Fini() {
     log.Println("[rpc] try to stop service.")
     close(s.done)
     s.wg.Wait()
-}
 
-func (s *Server) Fini() {
     log.Println("[rpc] finilize service...")
     for sname := range s.serviceMap {
         //注销服务
@@ -291,13 +294,15 @@ func (s *Server) serveConn(conn io.ReadWriteCloser) {
             }
             break
         }
+
         service, mtype, argv, replyv, err := s.unpackRequest(reqmsg)
         if err != nil {
-            if err != io.EOF {
+            //if err != io.EOF {
                 log.Printf("[rpc][error] unpackRequest: %v", err)
-            }
+            //}
             continue
         }
+        log.Printf("conn %p receive msg %v", conn, mtype)
         wg.Add(1)
         go service.call(s, conn, wg, mtype, reqmsg, argv, replyv)
     }
@@ -364,7 +369,8 @@ func (s *Server) unpackRequest(msg *message.Message) (service *service, mtype *m
 }
 
 func (s *Server) sendResponse(conn io.ReadWriteCloser, reqmsg *message.Message, reply interface{}, errmsg string) {
-    log.Printf("[rpc] sendResponse: conn %v, reply %+v, seqno %v, method %v", conn, reply, reqmsg.Seqno(), reqmsg.ServiceMethod())
+    log.Printf("[rpc] sendResponse: conn %v, reply %+v, seqno %v, method %v",
+        conn, reply, reqmsg.Seqno(), reqmsg.ServiceMethod())
     pkg := message.NewRequest(message.MsgKindDefault, reqmsg.Seqno())
     // Encode the response header
     if errmsg != "" {

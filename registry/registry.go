@@ -22,13 +22,19 @@ type Listener interface {
     OnNodeChange(string, *Node)
 }
 
+type svcWatcher struct {
+    listener        Listener            //本地监听回调
+    remoteWatcher   ServiceWatcher      //远端 watcher
+}
+
 type Registry struct {
     rt remote
     fb failback
     c  cache
 
-    listener     Listener
-    svcWatcher   ServiceWatcher
+                          //serviceKey -> svcWatcher
+    watcherMap map[string]*svcWatcher
+
     lock sync.Mutex       //protect nodeWatchers
     nodeWatchers []NodeWatcher
 
@@ -79,7 +85,7 @@ func (r *Registry) Register(service, group string, index int, addr string, opts 
         return err
     }
     log.Printf("[registry] try to register service(%v): %v, %v",
-            service, node.key(), string(nodeData))
+        service, node.key(), string(nodeData))
     //todo 检查cache是否存在，否则报错
 
 
@@ -119,10 +125,21 @@ func (r *Registry) Subscribe(service, group string, listener Listener) ([]*Node,
     if listener == nil {
         return nil, errors.New("[registry] no event listener specified")
     }
-    r.listener = listener
+    if r.watcherMap == nil {
+        r.watcherMap = make(map[string]*svcWatcher)
+    }
+    serviceKey := makeServiceKey(service, group)
+    if _, exist := r.watcherMap[serviceKey]; exist {
+        return nil, fmt.Errorf("%v already be subscribed", serviceKey)
+    }
+    watcher := &svcWatcher{
+        listener: listener,
+        //remoteWatcher:
+    }
+    r.watcherMap[serviceKey] = watcher
 
     var nodes []*Node
-    nodeMap, err := r.rt.ListServiceNode(makeServiceKey(service, group))
+    nodeMap, err := r.rt.ListServiceNode(serviceKey)
     if err != nil {
         return nil, err
     }
@@ -141,11 +158,11 @@ func (r *Registry) Subscribe(service, group string, listener Listener) ([]*Node,
         nodes = append(nodes, node)
 
         r.wg.Add(1)
-        go r.watchNode(k)
+        go r.watchNode(watcher, k)
     }
 
     r.wg.Add(1)
-    go r.watchService(service, group)
+    go r.watchService(watcher, service, group)
 
     return nodes, nil
 }
@@ -157,30 +174,30 @@ func (r *Registry) Close() {
     default:
     }
     log.Println("[prpc] registry Close()")
-    if r.svcWatcher != nil {
-        r.svcWatcher.Stop()
+    for _, w := range r.watcherMap {
+        w.remoteWatcher.Stop()
     }
     r.lock.Lock()
     for _, w := range r.nodeWatchers {
         w.Stop()
     }
     r.lock.Unlock()
-    r.rt.Close()  //todo 是不是rt断了，所有watch循环就会返回错误？从而结束？
+    r.rt.Close()
     close(r.exit) //通知所有goroutine停止运行
     r.wg.Wait()   //等所有的goroutine结束
 }
 
 ///====================================================================
 
-func (r *Registry) watchService(service, group string) {
+func (r *Registry) watchService(watcher *svcWatcher, service, group string) {
     defer r.wg.Done()
 
-    watcher := r.rt.WatchService(makeServiceKey(service, group))
-    r.svcWatcher = watcher
+    rtWatcher := r.rt.WatchService(makeServiceKey(service, group))
+    watcher.remoteWatcher = rtWatcher
     var event *ServiceEvent
 
     for {
-        event = watcher.Accept()
+        event = rtWatcher.Accept()
         if event == nil {
             break
         }
@@ -205,15 +222,15 @@ func (r *Registry) watchService(service, group string) {
             adds[k] = node
 
             r.wg.Add(1)
-            go r.watchNode(k)
+            go r.watchNode(watcher, k)
         }
         if len(adds) > 0 || len(event.Dels) > 0 {
-            r.listener.OnServiceChange(adds, event.Dels)
+            watcher.listener.OnServiceChange(adds, event.Dels)
         }
     }
 }
 
-func (r *Registry) watchNode(nodePath string) {
+func (r *Registry) watchNode(watcher *svcWatcher, nodePath string) {
     defer r.wg.Done()
 
     w := r.rt.WatchNode(nodePath)
@@ -252,7 +269,7 @@ func (r *Registry) watchNode(nodePath string) {
             log.Printf("[registry] node id mismatch: %+v %+v", nev, tnode)
             break
         }
-        r.listener.OnNodeChange(nev.Path, tnode)
+        watcher.listener.OnNodeChange(nev.Path, tnode)
     }
 }
 

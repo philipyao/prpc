@@ -252,7 +252,7 @@ func (sc *SvcClient) addEndpoint(nodes []*registry.Node) {
         }
         ep.conn = rpc
         sc.endPoints = append(sc.endPoints, ep)
-        log.Printf("[prpc] add endpoint: %+v, total %v\n", ep, len(sc.endPoints))
+        log.Printf("[prpc] service<%v> add endpoint: %+v, total %v\n", sc.service, ep, len(sc.endPoints))
     }
 }
 

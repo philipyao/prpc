@@ -81,7 +81,6 @@ func main() {
     waiter := make(chan struct{})
     go func(){
         time.Sleep(10 * time.Second)
-        srv.Stop()
         srv.Fini()
         close(waiter)
     }()
