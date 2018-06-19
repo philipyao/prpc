@@ -82,3 +82,10 @@ func main() {
 }
 
 ```
+
+
+### TODO
+
+ 健康检查（ 不能简单依赖 zk 的机制）
+ 客户端endpoints缓存机制
+ zk 坑 https://yq.aliyun.com/articles/227260
