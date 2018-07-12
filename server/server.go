@@ -151,12 +151,12 @@ func (s *Server) Serve(addr string, regConfig interface{}) error {
 
     laddr, err := net.ResolveTCPAddr("tcp", addr)
     if err != nil {
-        return fmt.Errorf("[rpc] err: ResolveTCPAddr(): addr %v, errmsg %v\n", addr, err)
+        return fmt.Errorf("[rpc] ResolveTCPAddr(): %v", err)
     }
 
     l, err := net.ListenTCP("tcp", laddr)
     if err != nil {
-        return fmt.Errorf("[rpc] err: listen on %v, %v\n", laddr, err)
+        return fmt.Errorf("[rpc] err: listen on %v, %v", laddr, err)
     }
     s.listener = l
 
