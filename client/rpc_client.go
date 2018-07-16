@@ -117,7 +117,7 @@ func (rc *RPCClient) Call(ctx context.Context, serviceMethod string, args interf
         log.Printf("[prpc] call canceled by context: %v", ctx.Err())
         return ctx.Err()
     case call := <- done:
-        log.Printf("[prpc] call rsp: %v", call.Error)
+        log.Printf("[prpc] call rsp: err %v", call.Error)
         return call.Error
     }
 }
@@ -263,7 +263,7 @@ func (rc *RPCClient) input() {
                 } else {
                     if ne, ok := err.(net.Error); ok {
                         if ne.Timeout() == true {
-                            log.Println("read timeout, continue")
+                            //log.Println("read timeout, continue")
                             err = nil
                             continue
                         }

@@ -142,7 +142,6 @@ func (sc *SvcClient) Call(serviceMethod string, args interface{}, reply interfac
         sc.statLock.Lock()
         sc.succTimes++
         sc.statLock.Unlock()
-        //log.Printf("Call in breaker %v successful", breakerName)
         return out
     case err := <-errors:
         return err
